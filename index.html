@@ -593,6 +593,30 @@ body::after {
   body { padding: max(20px, env(safe-area-inset-top)) 14px 50px; }
   .gm-card { padding: 16px; }
   .gm-progress-num { font-size: 36px; }
+
+  /* Input row: full-width input, then Add + Polish side-by-side below */
+  .goal-input-wrap.gm-input-wrap {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas: "input input" "add polish" "status status";
+    gap: 8px;
+  }
+  .gm-input  { grid-area: input; }
+  .gm-add    { grid-area: add; }
+  .gm-polish { grid-area: polish; }
+  .gm-status { grid-area: status; }
+
+  /* Comfortable touch targets */
+  .gm-add, .gm-polish { min-height: 44px; font-size: 14px; }
+  .gm-check { width: 26px; height: 26px; }
+
+  /* Hide drag handle (drag not usable on touch) */
+  .gm-handle { display: none !important; }
+
+  /* Always-visible action buttons (no hover on touch) */
+  .gm-queue-btn { opacity: 0.6; padding: 6px 8px; font-size: 15px; }
+  .goal-delete  { opacity: 0.55; padding: 6px 10px; font-size: 20px; }
+  .gm-row:hover .goal-delete { opacity: 0.55; }
 }
 </style>
 </head>

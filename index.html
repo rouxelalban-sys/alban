@@ -1589,19 +1589,22 @@ body::after {
     let wake = null, durMin = null, simulated = true;
     try {
       const res = await fetch(ENERGY_SUPABASE_URL +
-        '/rest/v1/zepp_sleep?select=date,sleep_start,sleep_end,awake_min&order=date.desc&limit=1', {
+        '/rest/v1/zepp_sleep?select=date,sleep_start,sleep_end,awake_min&order=date.desc&limit=5', {
         headers: { apikey: ENERGY_SUPABASE_KEY, Authorization: 'Bearer ' + ENERGY_SUPABASE_KEY }
       });
       const rows = res.ok ? await res.json() : [];
-      if (rows.length) {
-        const r = rows[0];
+      // Latest genuinely-tracked night (>= 3h asleep) that ended in the last 36h.
+      for (const r of rows) {
+        if (!r.sleep_start || !r.sleep_end) continue;
         const end = new Date(r.sleep_end);
-        // Only trust a night that ended in the last 36h
+        const asleep = (end - new Date(r.sleep_start)) / 60000 - (r.awake_min || 0);
+        if (asleep < 180) continue;
         if (Date.now() - end.getTime() < 36 * 3600 * 1000) {
           wake = end.getHours() + end.getMinutes() / 60;
-          durMin = (end - new Date(r.sleep_start)) / 60000 - (r.awake_min || 0);
+          durMin = asleep;
           simulated = false;
         }
+        break;
       }
     } catch (e) { /* offline — simulated curve below */ }
     if (wake == null) { wake = 8; durMin = 8 * 60; }

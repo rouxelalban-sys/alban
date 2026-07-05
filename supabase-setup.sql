@@ -164,3 +164,24 @@ create table if not exists public.mentor_messages (
   content text not null
 );
 create index if not exists mentor_messages_ts_idx on public.mentor_messages (ts desc);
+
+-- 7. Disable Row-Level Security on every table ------------------
+-- Single-user dashboard, owner opted out of auth/RLS. New Supabase
+-- projects enable RLS by default, which would block the publishable
+-- key from reading/writing; turning it off lets the pages and
+-- api/zepp-sync.js use the publishable key directly.
+alter table public.app_state        disable row level security;
+alter table public.zepp_sleep       disable row level security;
+alter table public.zepp_daily       disable row level security;
+alter table public.zepp_heart       disable row level security;
+alter table public.mood_checkins    disable row level security;
+alter table public.food_logs        disable row level security;
+alter table public.food_library     disable row level security;
+alter table public.weight_logs      disable row level security;
+alter table public.climb_sessions   disable row level security;
+alter table public.climb_sends      disable row level security;
+alter table public.brain_notes      disable row level security;
+alter table public.brain_chunks     disable row level security;
+alter table public.mentor_profile   disable row level security;
+alter table public.mentor_memories  disable row level security;
+alter table public.mentor_messages  disable row level security;

@@ -3,3 +3,9 @@
 .vscode/
 .idea/
 *.swp
+
+# Stray nested clone of this same repo — do not commit
+/alban/
+
+# Local Claude Code settings (machine-specific permissions)
+.claude/settings.local.json

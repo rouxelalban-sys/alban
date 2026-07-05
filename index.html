@@ -3,19 +3,29 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#050506">
-<title>My Dashboard</title>
+<meta name="theme-color" content="#020610">
+<title>JARVIS — Dashboard</title>
+<link rel="stylesheet" href="jarvis.css">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="sync.js" defer></script>
 <script src="topbar.js" defer></script>
 <style>
+/* JARVIS HUD tokens — duplicated from jarvis.css on purpose, so the
+   page can never render white if the external stylesheet fails. */
 :root {
-  --text-primary: #FAFAFA;
-  --text-secondary: #B8B6B0;
-  --text-tertiary: #76746E;
-  --success: #6BE3A4;
+  --bg: #020610;
+  --text-primary: #EAF6FB;
+  --text-secondary: #9FB6C4;
+  --text-tertiary: #5E7686;
+  --hud: #4FD8FF;
+  --hud-bright: #9BEBFF;
+  --hud-dim: rgba(79, 216, 255, 0.14);
+  --hud-glow: rgba(79, 216, 255, 0.45);
+  --cold: #3A4A66;
+  --cold-deep: #1A2A4A;
+  --success: #4FD8FF;
   --warning: #F2C063;
-  --danger: #FF6B6B;
+  --danger: #FF5C4D;
   --font: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
@@ -23,7 +33,7 @@
 * { box-sizing: border-box; }
 html, body {
   margin: 0; padding: 0;
-  background: #050506;
+  background: var(--bg);
   color: var(--text-secondary);
   font-family: var(--font);
   -webkit-font-smoothing: antialiased;
@@ -40,18 +50,27 @@ body::before {
   content: '';
   position: fixed; inset: 0;
   background:
-    radial-gradient(circle at 82% 14%, rgba(224, 118, 88, 0.16), transparent 45%),
-    radial-gradient(circle at 18% 90%, rgba(180, 180, 200, 0.06), transparent 50%);
+    radial-gradient(circle at 78% 12%, rgba(79, 216, 255, 0.10), transparent 45%),
+    radial-gradient(circle at 15% 85%, rgba(46, 124, 214, 0.09), transparent 50%),
+    radial-gradient(circle at 50% 45%, rgba(26, 42, 74, 0.35), transparent 70%);
   filter: blur(40px);
   pointer-events: none;
   z-index: -2;
   animation: drift 36s ease-in-out infinite alternate;
 }
+/* Starfield */
 body::after {
   content: '';
   position: fixed; inset: 0;
-  background-image: radial-gradient(rgba(255,255,255,0.014) 1px, transparent 1px);
-  background-size: 3px 3px;
+  background-image:
+    radial-gradient(1px 1px at 12% 22%, rgba(255,255,255,0.35), transparent 100%),
+    radial-gradient(1px 1px at 68% 12%, rgba(190,230,255,0.30), transparent 100%),
+    radial-gradient(1.5px 1.5px at 42% 58%, rgba(255,255,255,0.22), transparent 100%),
+    radial-gradient(1px 1px at 86% 74%, rgba(190,230,255,0.28), transparent 100%),
+    radial-gradient(1px 1px at 24% 86%, rgba(255,255,255,0.20), transparent 100%),
+    radial-gradient(1.5px 1.5px at 92% 38%, rgba(155,235,255,0.25), transparent 100%),
+    radial-gradient(1px 1px at 55% 30%, rgba(255,255,255,0.16), transparent 100%);
+  background-size: 520px 520px, 460px 460px, 610px 610px, 550px 550px, 490px 490px, 640px 640px, 430px 430px;
   pointer-events: none;
   z-index: -1;
 }
@@ -66,16 +85,24 @@ body::after {
 }
 
 /* ===== Component 1: page title ===== */
+.dash-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 9.5px; font-weight: 800;
+  letter-spacing: 0.24em; text-transform: uppercase;
+  color: var(--text-tertiary);
+  margin-bottom: 4px;
+}
 .dash-title {
   margin: 0 0 14px;
   font-size: 28px;
   font-weight: 700;
-  letter-spacing: -0.025em;
-  background: linear-gradient(180deg, #FFFFFF 0%, #C7C4BC 120%);
+  letter-spacing: 0.06em;
+  background: linear-gradient(180deg, #FFFFFF 0%, #4FD8FF 140%);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
   color: transparent;
+  filter: drop-shadow(0 0 14px rgba(79, 216, 255, 0.30));
 }
 @media (max-width: 480px) { .dash-title { font-size: 22px; } }
 
@@ -111,8 +138,8 @@ body::after {
 .goal-ticker-led { display: inline-flex; align-items: center; }
 .goal-ticker-led-dot {
   width: 7px; height: 7px; border-radius: 50%;
-  background: #6BE3A4;
-  box-shadow: 0 0 8px rgba(107,227,164,0.7);
+  background: var(--hud);
+  box-shadow: 0 0 8px rgba(79,216,255,0.8);
   animation: led-pulse 1.6s ease-in-out infinite;
 }
 @keyframes led-pulse {
@@ -177,11 +204,12 @@ body::after {
   gap: 26px;
   padding: 22px;
   margin-bottom: 22px;
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.04);
+  border-radius: 14px;
+  background: rgba(79, 216, 255, 0.03);
+  border: 1px solid rgba(79, 216, 255, 0.12);
   backdrop-filter: blur(24px) saturate(1.2);
   -webkit-backdrop-filter: blur(24px) saturate(1.2);
-  box-shadow: 0 12px 40px rgba(0,0,0,0.45);
+  box-shadow: 0 12px 40px rgba(0,0,0,0.55), inset 0 0 32px rgba(79,216,255,0.04);
 }
 .day-ring {
   position: relative;
@@ -189,7 +217,7 @@ body::after {
   flex-shrink: 0;
 }
 .day-ring svg { width: 100%; height: 100%; display: block; }
-.day-ring-track { fill: none; stroke: rgba(255,255,255,0.06); stroke-width: 8; }
+.day-ring-track { fill: none; stroke: rgba(79,216,255,0.09); stroke-width: 8; }
 .day-ring-fill {
   fill: none;
   stroke-width: 8;
@@ -259,20 +287,21 @@ body::after {
 
 .gm-card {
   position: relative;
-  background: rgba(255, 255, 255, 0.04);
-  border-radius: 16px;
+  background: rgba(79, 216, 255, 0.03);
+  border: 1px solid rgba(79, 216, 255, 0.12);
+  border-radius: 14px;
   padding: 20px;
   margin-bottom: 14px;
   backdrop-filter: blur(24px) saturate(1.2);
   -webkit-backdrop-filter: blur(24px) saturate(1.2);
-  box-shadow: 0 12px 40px rgba(0,0,0,0.45);
+  box-shadow: 0 12px 40px rgba(0,0,0,0.55), inset 0 0 32px rgba(79,216,255,0.04);
   transition: background 0.4s;
   overflow: hidden;
 }
 .gm-card.gm-all-done::before {
   content: '';
   position: absolute; inset: 0;
-  background: radial-gradient(circle at 50% 0%, rgba(107,227,164,0.10), transparent 60%);
+  background: radial-gradient(circle at 50% 0%, rgba(79,216,255,0.12), transparent 60%);
   pointer-events: none;
 }
 .gm-card.gm-all-done .gm-progress-num,
@@ -359,8 +388,8 @@ body::after {
   transition: background 0.3s, box-shadow 0.3s;
 }
 .gm-bar-seg-done {
-  background: #6BE3A4;
-  box-shadow: 0 0 6px rgba(107,227,164,0.40);
+  background: var(--hud);
+  box-shadow: 0 0 6px rgba(79,216,255,0.5);
 }
 
 .goal-list { list-style: none; margin: 0; padding: 0; }
@@ -384,7 +413,7 @@ body::after {
 .gm-row:hover { background: rgba(255,255,255,0.06); }
 .gm-row.gm-row-done {
   opacity: 0.45;
-  background: rgba(107,227,164,0.04);
+  background: rgba(79,216,255,0.05);
 }
 .gm-row.gm-row-done .gm-text {
   text-decoration: line-through;
@@ -395,7 +424,7 @@ body::after {
   box-shadow: inset 3px 0 0 0 #F2C063;
 }
 .gm-row.gm-row-queued .gm-text { color: #FFE2A8; }
-.gm-row.is-drag-over { border-top: 2px solid #6BE3A4; }
+.gm-row.is-drag-over { border-top: 2px solid var(--hud); }
 .gm-row.is-queue-flashing { animation: gm-queue-flash 0.48s ease-out; }
 @keyframes gm-queue-flash {
   0%   { background: rgba(255,255,255,0.035); transform: scale(1); }
@@ -428,9 +457,9 @@ body::after {
   transition: background 0.2s, border-color 0.2s, box-shadow 0.25s;
 }
 .gm-check:checked {
-  background: #6BE3A4;
-  border-color: #6BE3A4;
-  box-shadow: 0 0 12px rgba(107,227,164,0.40);
+  background: var(--hud);
+  border-color: var(--hud);
+  box-shadow: 0 0 12px rgba(79,216,255,0.5);
 }
 .gm-check:checked::after {
   content: '';
@@ -547,13 +576,17 @@ body::after {
   transition: border-color 0.2s, background 0.2s;
 }
 .gm-input::placeholder { color: var(--text-tertiary); }
-.gm-input:focus { border-color: rgba(255,255,255,0.28); background: rgba(0,0,0,0.36); }
+.gm-input:focus {
+  border-color: rgba(79,216,255,0.45);
+  background: rgba(0,0,0,0.36);
+  box-shadow: 0 0 12px rgba(79,216,255,0.12);
+}
 
 .gm-add {
   padding: 11px 20px;
   border: 0; border-radius: 12px;
-  background: linear-gradient(180deg, #FFFFFF 0%, #E8E5DD 100%);
-  color: #0A0A0B;
+  background: linear-gradient(180deg, #BFF0FF 0%, #5FCBEE 100%);
+  color: #04121C;
   font-family: inherit; font-size: 13px; font-weight: 700;
   cursor: pointer;
   box-shadow:
@@ -623,7 +656,8 @@ body::after {
 <body>
 <div class="page">
 
-  <h1 class="dash-title">My Dashboard</h1>
+  <div class="dash-eyebrow">Alban · Personal OS · MK-I</div>
+  <h1 class="dash-title">J.A.R.V.I.S.</h1>
 
   <div class="ticker-row">
     <div class="goal-ticker" id="goalTicker" aria-live="polite" aria-atomic="true">
@@ -637,6 +671,22 @@ body::after {
       </div>
       <div class="goal-ticker-meta" id="goalTickerMeta">0/0</div>
     </div>
+  </div>
+
+  <div class="hud-card hud-wrap">
+    <div class="hud-head">
+      <div class="hud-eyebrow">System Output</div>
+      <div class="hud-state" id="hudState">Standby</div>
+    </div>
+    <div class="hud-bar" id="hudBar">
+      <div class="hud-bar-fill" id="hudFill"></div>
+      <div class="hud-bar-ticks"></div>
+      <div class="hud-bar-label">
+        <span class="hud-score" id="hudScore">—</span>
+        <span class="hud-score-unit">/ 100</span>
+      </div>
+    </div>
+    <div class="hud-break" id="hudBreak"></div>
   </div>
 
   <div class="day-ring-wrap">
@@ -898,16 +948,17 @@ body::after {
   });
 
   // ---------- Day Ring ----------
+  // JARVIS cycle: dim slate wake → bright cyan peak → electric blue → deep-navy night.
   const PALETTE = [
-    [0,    [255, 216, 158]],
-    [12.5, [255, 205, 121]],
-    [25,   [255, 227, 143]],
-    [37.5, [255, 183, 106]],
-    [50,   [255, 149,  89]],
-    [62.5, [243, 111,  79]],
-    [75,   [226,  93, 122]],
-    [87.5, [123,  91, 176]],
-    [100,  [ 47,  58, 102]]
+    [0,    [ 58,  90, 120]],
+    [12.5, [ 74, 140, 180]],
+    [25,   [ 79, 216, 255]],
+    [37.5, [125, 228, 255]],
+    [50,   [155, 235, 255]],
+    [62.5, [ 85, 200, 245]],
+    [75,   [ 55, 160, 225]],
+    [87.5, [ 46, 110, 190]],
+    [100,  [ 26,  42,  74]]
   ];
   function lerp(a, b, t) { return a + (b - a) * t; }
   function paletteAt(p) {
@@ -957,7 +1008,7 @@ body::after {
 
     if (hours < WAKE_HOUR) {
       fillEl.setAttribute('stroke-dashoffset', C);
-      fillEl.style.stroke = '#4D4B47';
+      fillEl.style.stroke = '#22304A';
       percentEl.textContent = '—';
       phaseEl.textContent   = 'SLEEPING';
       statusEl.textContent  = '😴 Still sleeping';
@@ -968,7 +1019,7 @@ body::after {
 
     if (hours >= SLEEP_HOUR) {
       fillEl.setAttribute('stroke-dashoffset', 0);
-      fillEl.style.stroke = '#E25D7A';
+      fillEl.style.stroke = '#FF5C4D';
       percentEl.textContent = '100%';
       phaseEl.textContent   = 'PAST BEDTIME';
       statusEl.textContent  = '⚠️ Past bedtime';
@@ -1316,6 +1367,100 @@ body::after {
     loadTomorrow
   );
 
+  // ---------- System Output score ----------
+  // Composite of today's inputs. Phase 1 uses what already lives in
+  // localStorage (goals / stack / water); sleep, mood and macros join
+  // the formula as their modules land.
+  function hudWaterTarget(state) {
+    // Same formula the topbar uses for the WATER pill target.
+    const p = state.profile || { weightKg: 75 };
+    const wKg = state.weightUnit === 'lb' ? (p.weightKg || 0) / 2.20462 : (p.weightKg || 0);
+    const base = wKg * 35;
+    const exercise = (p.activityHrsPerWeek || 0) / 7 * 500;
+    const caffeine = Math.max(0, (state.caffeineMgPerDay || 0) - 200) * 1.5;
+    const subs = (state.substances || []).reduce((s, x) => {
+      const dose = (x && x.dose != null ? x.dose : (x && x.defaultDose)) || 0;
+      return s + Math.max(0, dose * ((x && x.mlPerUnit) || 0));
+    }, 0);
+    let adjust = 0;
+    if (p.sex === 'm') adjust += 200;
+    if ((p.age || 0) >= 50) adjust += 100;
+    const totalMl = base + exercise + caffeine + subs + adjust;
+    let unitVol;
+    if (state.unit === 'glass') unitVol = state.glassMl || 250;
+    else if (state.unit === 'oz') unitVol = 30;
+    else if (state.unit === 'ml') unitVol = 1;
+    else unitVol = state.bottleMl || 500;
+    return Math.max(1, Math.ceil(totalMl / unitVol));
+  }
+
+  function hudInputs() {
+    const out = [];
+
+    const goals = getGoals(todayKey());
+    out.push({ label: 'Goals', done: goals.filter(g => g.done).length, total: goals.length, weight: 40 });
+
+    const items = storeGet('stack:items') || [];
+    const taken = storeGet('stack:taken:' + getActiveDateString()) || {};
+    const sTotal = Array.isArray(items) ? items.length : 0;
+    const sDone  = sTotal ? items.filter(i => i && taken[i.id]).length : 0;
+    out.push({ label: 'Stack', done: sDone, total: sTotal, weight: 30 });
+
+    const water = storeGet('po_water_v1');
+    if (water && typeof water === 'object') {
+      const target = hudWaterTarget(water);
+      const drunk  = (water.logs || {})[dateToKey(new Date())] || 0;
+      out.push({ label: 'Water', done: Math.min(drunk, target), total: target, weight: 30 });
+    } else {
+      out.push({ label: 'Water', done: 0, total: 0, weight: 30 });
+    }
+    return out;
+  }
+
+  function renderHud() {
+    const inputs = hudInputs();
+    const active = inputs.filter(i => i.total > 0);
+    let score = 0;
+    if (active.length > 0) {
+      const weightSum = active.reduce((s, i) => s + i.weight, 0);
+      score = Math.round(active.reduce((s, i) => s + (i.done / i.total) * (i.weight / weightSum) * 100, 0));
+    }
+
+    const bar   = document.getElementById('hudBar');
+    const fill  = document.getElementById('hudFill');
+    const num   = document.getElementById('hudScore');
+    const state = document.getElementById('hudState');
+    const brk   = document.getElementById('hudBreak');
+    if (!bar) return;
+
+    fill.style.width = Math.max(score, score > 0 ? 6 : 0) + '%';
+    num.textContent = active.length ? score : '—';
+
+    let label;
+    if (score >= 100)     label = 'Full Power';
+    else if (score >= 70) label = 'Optimal';
+    else if (score >= 40) label = 'Online';
+    else                  label = 'Standby';
+    state.textContent = label;
+    state.classList.toggle('is-online', score >= 40);
+    bar.classList.toggle('is-online', score >= 40 && score < 100);
+    bar.classList.toggle('is-full', score >= 100);
+
+    brk.innerHTML = '';
+    inputs.forEach(i => {
+      const chip = document.createElement('span');
+      chip.className = 'hud-chip' + (i.total > 0 && i.done >= i.total ? ' is-full' : '');
+      const b = document.createElement('b');
+      b.textContent = i.total > 0 ? (i.done + '/' + i.total) : '—';
+      chip.append(i.label + ' ', b);
+      brk.appendChild(chip);
+    });
+  }
+
+  window.addEventListener('goals-changed', renderHud);
+  window.addEventListener('focus', renderHud);
+  setInterval(renderHud, 60 * 1000);
+
   // ---------- Boot ----------
   rollover();
   processStreak();
@@ -1325,10 +1470,11 @@ body::after {
   updateDayRing();
   setInterval(updateDayRing, 60 * 1000);
   startTicker();
+  renderHud();
 
   // Re-render when storage changes from another tab (or our bridged parent).
   window.addEventListener('storage', () => {
-    loadToday(); loadTomorrow(); renderStreak();
+    loadToday(); loadTomorrow(); renderStreak(); renderHud();
   });
 })();
 </script>

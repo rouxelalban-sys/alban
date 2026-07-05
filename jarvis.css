@@ -1,0 +1,200 @@
+/* =============================================================
+   JARVIS design system — sci-fi HUD art direction.
+   Shared by every page: <link rel="stylesheet" href="jarvis.css">
+   Deep-space navy base, glowing cyan for everything active or
+   achieved, red-orange for alerts, amber as secondary accent.
+   NOTE: pages must ALSO inline these :root tokens as a fallback
+   so they never render unstyled if this file fails to load.
+   ============================================================= */
+
+:root {
+  --bg: #020610;
+
+  --text-primary:  #EAF6FB;
+  --text-secondary:#9FB6C4;
+  --text-tertiary: #5E7686;
+
+  /* HUD cyan — the accent for everything active / achieved */
+  --hud:        #4FD8FF;
+  --hud-bright: #9BEBFF;
+  --hud-dim:    rgba(79, 216, 255, 0.14);
+  --hud-glow:   rgba(79, 216, 255, 0.45);
+
+  /* Standby cold — dim slate for the "offline" state */
+  --cold:      #3A4A66;
+  --cold-deep: #1A2A4A;
+
+  /* Semantic */
+  --success: #4FD8FF;
+  --warning: #F2C063;
+  --danger:  #FF5C4D;
+
+  --font: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+/* ---- Boot-up entrance: the HUD powers on. ------------------- */
+.page { animation: hud-boot 0.9s cubic-bezier(0.22, 1, 0.36, 1) both; }
+@keyframes hud-boot {
+  from { filter: blur(7px) saturate(0.5) brightness(0.6); opacity: 0.4; }
+  to   { filter: none; opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .page { animation: none; }
+}
+
+/* ---- HUD glass card: hairline cyan frame + corner brackets -- */
+.hud-card {
+  position: relative;
+  background: rgba(79, 216, 255, 0.03);
+  border: 1px solid rgba(79, 216, 255, 0.12);
+  border-radius: 14px;
+  backdrop-filter: blur(24px) saturate(1.2);
+  -webkit-backdrop-filter: blur(24px) saturate(1.2);
+  box-shadow:
+    0 12px 40px rgba(0, 0, 0, 0.55),
+    inset 0 0 32px rgba(79, 216, 255, 0.04);
+  overflow: hidden;
+}
+.hud-card::before,
+.hud-card::after {
+  content: '';
+  position: absolute;
+  width: 16px; height: 16px;
+  border: 1.5px solid rgba(79, 216, 255, 0.55);
+  pointer-events: none;
+}
+.hud-card::before { top: -1px; left: -1px; border-right: 0; border-bottom: 0; border-radius: 14px 0 0 0; }
+.hud-card::after  { bottom: -1px; right: -1px; border-left: 0; border-top: 0; border-radius: 0 0 14px 0; }
+
+/* ---- Power gauge: a segmented HUD energy bar ----------------- */
+.hud-wrap { padding: 18px 20px 16px; margin-bottom: 18px; }
+
+.hud-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 12px; margin-bottom: 12px;
+}
+.hud-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 9.5px; font-weight: 800;
+  letter-spacing: 0.20em; text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+.hud-state {
+  font-family: var(--font-mono);
+  font-size: 10px; font-weight: 800;
+  letter-spacing: 0.16em; text-transform: uppercase;
+  color: var(--cold);
+  transition: color 0.5s, text-shadow 0.5s;
+}
+.hud-state.is-online {
+  color: var(--hud);
+  text-shadow: 0 0 12px var(--hud-glow);
+}
+
+.hud-bar {
+  position: relative;
+  height: 54px;
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(0, 4, 12, 0.75), rgba(0, 8, 20, 0.55));
+  border: 1px solid rgba(79, 216, 255, 0.16);
+  box-shadow: inset 0 2px 12px rgba(0, 0, 0, 0.6);
+  overflow: hidden;
+}
+.hud-bar-fill {
+  position: absolute; top: 0; bottom: 0; left: 0;
+  width: 0%;
+  background: linear-gradient(180deg, #6FA0C8 0%, var(--cold) 100%);
+  box-shadow: 0 0 18px rgba(58, 74, 102, 0.5);
+  transition: width 0.9s cubic-bezier(0.22, 1, 0.36, 1),
+              background 0.6s, box-shadow 0.6s;
+}
+.hud-bar.is-online .hud-bar-fill {
+  background: linear-gradient(180deg, var(--hud-bright) 0%, #1FA8DD 100%);
+  box-shadow: 0 0 22px var(--hud-glow);
+}
+.hud-bar.is-full .hud-bar-fill {
+  background: linear-gradient(180deg, #D4F6FF 0%, var(--hud-bright) 100%);
+  box-shadow: 0 0 34px var(--hud-glow), 0 0 90px rgba(79, 216, 255, 0.30);
+  animation: hud-full-pulse 2.2s ease-in-out infinite;
+}
+@keyframes hud-full-pulse {
+  0%, 100% { filter: brightness(1); }
+  50%      { filter: brightness(1.22); }
+}
+/* Segment ticks over the fill — power-cell look */
+.hud-bar-ticks {
+  position: absolute; inset: 0;
+  background: repeating-linear-gradient(90deg,
+    transparent 0, transparent calc(10% - 2px),
+    rgba(2, 6, 16, 0.85) calc(10% - 2px), rgba(2, 6, 16, 0.85) 10%);
+  pointer-events: none;
+}
+/* Radar sweep across the bar */
+.hud-bar::after {
+  content: '';
+  position: absolute; top: 0; bottom: 0; width: 30%;
+  background: linear-gradient(90deg, transparent, rgba(155, 235, 255, 0.10), transparent);
+  animation: hud-sweep 6s linear infinite;
+  pointer-events: none;
+}
+@keyframes hud-sweep {
+  0%   { left: -36%; }
+  100% { left: 110%; }
+}
+.hud-bar-label {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  gap: 10px;
+  pointer-events: none;
+  z-index: 1;
+}
+.hud-score {
+  font-family: var(--font-mono);
+  font-size: 22px; font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.85);
+}
+.hud-score-unit {
+  font-family: var(--font-mono);
+  font-size: 11px; font-weight: 700;
+  color: var(--text-secondary);
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.85);
+}
+
+/* Breakdown chips: GOALS 2/5 · STACK 3/3 · WATER 4/6 */
+.hud-break {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  margin-top: 12px;
+}
+.hud-chip {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  background: rgba(79, 216, 255, 0.04);
+  border: 1px solid rgba(79, 216, 255, 0.10);
+  font-family: var(--font-mono);
+  font-size: 10px; font-weight: 700;
+  letter-spacing: 0.10em; text-transform: uppercase;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-tertiary);
+}
+.hud-chip b {
+  font-weight: 800;
+  color: var(--text-secondary);
+}
+.hud-chip.is-full {
+  background: var(--hud-dim);
+  border-color: rgba(79, 216, 255, 0.35);
+  color: var(--hud);
+  box-shadow: 0 0 12px rgba(79, 216, 255, 0.12);
+}
+.hud-chip.is-full b { color: var(--hud-bright); }
+
+@media (max-width: 480px) {
+  .hud-wrap { padding: 14px 14px 12px; }
+  .hud-bar { height: 48px; }
+  .hud-score { font-size: 19px; }
+}

@@ -244,12 +244,18 @@ async function upsert(table, rows) {
   return rows.length;
 }
 
+// Bump this whenever the auth flow changes, so a response instantly
+// reveals whether Vercel is serving the current code.
+const VERSION = 'zepp-auth-v2-2026-07-05';
+
 module.exports = async function handler(req, res) {
+  // Never let a CDN/browser cache an API response (esp. a stale error).
+  res.setHeader('Cache-Control', 'no-store, max-age=0');
   try {
     const email = process.env.ZEPP_EMAIL;
     const password = process.env.ZEPP_PASSWORD;
     if (!email || !password) {
-      res.status(500).json({ ok: false, error: 'Set ZEPP_EMAIL and ZEPP_PASSWORD in Vercel env vars.' });
+      res.status(500).json({ ok: false, version: VERSION, error: 'Set ZEPP_EMAIL and ZEPP_PASSWORD in Vercel env vars.' });
       return;
     }
 
@@ -271,6 +277,7 @@ module.exports = async function handler(req, res) {
 
     const out = {
       ok: true,
+      version: VERSION,
       range: [fmtDate(from), fmtDate(to)],
       daysReturned: items.length,
       sleepRows: sleepRows.length,
@@ -279,6 +286,6 @@ module.exports = async function handler(req, res) {
     if (debug) out.raw = items;
     res.status(200).json(out);
   } catch (e) {
-    res.status(500).json({ ok: false, error: String(e && e.message || e) });
+    res.status(500).json({ ok: false, version: VERSION, error: String(e && e.message || e) });
   }
 };

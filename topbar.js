@@ -191,6 +191,10 @@ body.topbar-modal-open {
     <span class="topbar-pill-dot"></span>
     <span class="topbar-pill-label">SLEEP</span>
   </a>
+  <a href="mood.html" class="topbar-pill" id="topbarMood">
+    <span class="topbar-pill-dot"></span>
+    <span class="topbar-pill-label">MOOD</span>
+  </a>
   <a href="gym.html" class="topbar-pill" id="topbarGym">
     <span class="topbar-pill-dot"></span>
     <span class="topbar-pill-label">GYM</span>

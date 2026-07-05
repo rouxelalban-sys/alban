@@ -1,0 +1,745 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#020610">
+<title>JARVIS — Mood</title>
+<link rel="manifest" href="manifest.json">
+<link rel="stylesheet" href="jarvis.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="topbar.js" defer></script>
+<style>
+:root {
+  --bg: #020610;
+  --text-primary: #EAF6FB;
+  --text-secondary: #9FB6C4;
+  --text-tertiary: #5E7686;
+  --hud: #4FD8FF;
+  --hud-bright: #9BEBFF;
+  --hud-dim: rgba(79, 216, 255, 0.14);
+  --hud-glow: rgba(79, 216, 255, 0.45);
+  --cold: #3A4A66;
+  --danger: #FF5C4D;
+  --warning: #F2C063;
+  /* Mood quadrant colors (How We Feel model) */
+  --q-yellow: #F2C063;
+  --q-red:    #FF5C4D;
+  --q-blue:   #4F86FF;
+  --q-green:  #46D6A2;
+  --font: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; padding: 0; background: var(--bg);
+  color: var(--text-secondary); font-family: var(--font);
+  -webkit-font-smoothing: antialiased;
+}
+body {
+  min-height: 100vh; position: relative; overflow-x: hidden;
+  padding: max(28px, env(safe-area-inset-top)) 20px 60px;
+}
+body::before {
+  content: ''; position: fixed; inset: 0;
+  background:
+    radial-gradient(circle at 78% 12%, rgba(79, 216, 255, 0.10), transparent 45%),
+    radial-gradient(circle at 15% 85%, rgba(46, 124, 214, 0.09), transparent 50%);
+  filter: blur(40px); pointer-events: none; z-index: -2;
+}
+body::after {
+  content: ''; position: fixed; inset: 0;
+  background-image:
+    radial-gradient(1px 1px at 12% 22%, rgba(255,255,255,0.35), transparent 100%),
+    radial-gradient(1px 1px at 68% 12%, rgba(190,230,255,0.30), transparent 100%),
+    radial-gradient(1.5px 1.5px at 42% 58%, rgba(255,255,255,0.22), transparent 100%),
+    radial-gradient(1px 1px at 86% 74%, rgba(190,230,255,0.28), transparent 100%),
+    radial-gradient(1px 1px at 24% 86%, rgba(255,255,255,0.20), transparent 100%);
+  background-size: 520px 520px, 460px 460px, 610px 610px, 550px 550px, 490px 490px;
+  pointer-events: none; z-index: -1;
+}
+.page { max-width: 1100px; margin: 0 auto; }
+
+.dash-eyebrow {
+  font-family: var(--font-mono); font-size: 9.5px; font-weight: 800;
+  letter-spacing: 0.24em; text-transform: uppercase;
+  color: var(--text-tertiary); margin-bottom: 4px;
+}
+.dash-title {
+  margin: 0 0 18px; font-size: 28px; font-weight: 700; letter-spacing: 0.06em;
+  background: linear-gradient(180deg, #FFFFFF 0%, #4FD8FF 140%);
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent; color: transparent;
+  filter: drop-shadow(0 0 14px rgba(79, 216, 255, 0.30));
+}
+@media (max-width: 480px) { .dash-title { font-size: 22px; } }
+
+.section-title {
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase;
+  color: var(--text-tertiary); display: flex; align-items: center; gap: 12px;
+  margin: 26px 0 12px;
+}
+.section-title::before { content: ''; width: 18px; height: 1px; background: var(--text-tertiary); opacity: 0.6; }
+.section-title::after  { content: ''; flex: 1; height: 1px; background: linear-gradient(90deg, rgba(255,255,255,0.08), transparent); }
+
+/* ---- Step 1: quadrant picker ---- */
+.quad-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+  aspect-ratio: 1 / 0.72; max-width: 560px;
+}
+.quad {
+  position: relative; border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 16px; cursor: pointer; overflow: hidden;
+  display: flex; flex-direction: column; justify-content: flex-end;
+  padding: 16px; min-height: 120px;
+  transition: transform 0.15s, box-shadow 0.25s, border-color 0.2s;
+}
+.quad:hover { transform: translateY(-2px); }
+.quad[data-q="yellow"] { background: radial-gradient(circle at 30% 30%, rgba(242,192,99,0.30), rgba(242,192,99,0.06)); }
+.quad[data-q="red"]    { background: radial-gradient(circle at 70% 30%, rgba(255,92,77,0.30), rgba(255,92,77,0.06)); }
+.quad[data-q="blue"]   { background: radial-gradient(circle at 30% 70%, rgba(79,134,255,0.30), rgba(79,134,255,0.06)); }
+.quad[data-q="green"]  { background: radial-gradient(circle at 70% 70%, rgba(70,214,162,0.30), rgba(70,214,162,0.06)); }
+.quad[data-q="yellow"]:hover { border-color: var(--q-yellow); box-shadow: 0 0 24px rgba(242,192,99,0.25); }
+.quad[data-q="red"]:hover    { border-color: var(--q-red);    box-shadow: 0 0 24px rgba(255,92,77,0.25); }
+.quad[data-q="blue"]:hover   { border-color: var(--q-blue);   box-shadow: 0 0 24px rgba(79,134,255,0.25); }
+.quad[data-q="green"]:hover  { border-color: var(--q-green);  box-shadow: 0 0 24px rgba(70,214,162,0.25); }
+.quad-name { font-size: 17px; font-weight: 700; color: var(--text-primary); }
+.quad-desc { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.05em; color: var(--text-secondary); margin-top: 3px; }
+.axis-hint {
+  font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--text-tertiary); text-align: center; margin: 10px 0 0;
+}
+
+/* ---- Step 2: emotion grid ---- */
+.emo-head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+.back-btn {
+  border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.04);
+  color: var(--text-secondary); border-radius: 10px; padding: 7px 12px;
+  font-family: var(--font-mono); font-size: 11px; cursor: pointer;
+}
+.back-btn:hover { background: rgba(255,255,255,0.08); }
+.emo-quad-label { font-size: 15px; font-weight: 700; }
+.emo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; }
+.emo {
+  border: 1px solid rgba(255,255,255,0.08); border-radius: 12px;
+  background: rgba(255,255,255,0.03); padding: 12px 12px; cursor: pointer;
+  transition: transform 0.12s, background 0.2s, border-color 0.2s;
+  text-align: left;
+}
+.emo:hover { transform: translateY(-1px); background: rgba(255,255,255,0.06); }
+.emo.is-selected { border-color: var(--sel, var(--hud)); background: rgba(79,216,255,0.08); box-shadow: 0 0 16px rgba(79,216,255,0.15); }
+.emo-name { font-size: 14px; font-weight: 600; color: var(--text-primary); }
+.emo-def { font-size: 11px; color: var(--text-tertiary); margin-top: 4px; line-height: 1.4; display: none; }
+.emo.is-selected .emo-def { display: block; }
+
+/* ---- Step 3: context ---- */
+.ctx-group { margin-bottom: 16px; }
+.ctx-label { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-tertiary); margin-bottom: 8px; }
+.chips { display: flex; flex-wrap: wrap; gap: 7px; }
+.chip {
+  border: 1px solid rgba(255,255,255,0.10); background: rgba(255,255,255,0.03);
+  color: var(--text-secondary); border-radius: 999px; padding: 7px 13px;
+  font-size: 12.5px; cursor: pointer; transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.chip:hover { background: rgba(255,255,255,0.07); }
+.chip.on { background: var(--hud-dim); border-color: rgba(79,216,255,0.35); color: var(--hud-bright); }
+.note-input {
+  width: 100%; margin-top: 4px; padding: 12px 14px; min-height: 70px; resize: vertical;
+  border: 1px solid rgba(255,255,255,0.08); border-radius: 12px;
+  background: rgba(0,0,0,0.28); color: var(--text-primary); font-family: inherit; font-size: 14px; outline: none;
+}
+.note-input:focus { border-color: rgba(79,216,255,0.45); box-shadow: 0 0 12px rgba(79,216,255,0.12); }
+.auto-note { font-family: var(--font-mono); font-size: 10.5px; color: var(--text-tertiary); margin-top: 10px; line-height: 1.7; }
+.save-btn {
+  width: 100%; margin-top: 16px; padding: 14px; border: 0; border-radius: 12px;
+  background: linear-gradient(180deg, #BFF0FF 0%, #5FCBEE 100%); color: #04121C;
+  font-family: inherit; font-size: 15px; font-weight: 700; cursor: pointer;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.9), 0 8px 22px rgba(0,0,0,0.25);
+  transition: transform 0.1s, filter 0.15s;
+}
+.save-btn:hover { filter: brightness(1.06); transform: translateY(-1px); }
+.save-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.toast {
+  position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%) translateY(20px);
+  background: rgba(8,20,30,0.95); border: 1px solid rgba(79,216,255,0.35);
+  color: var(--hud-bright); font-family: var(--font-mono); font-size: 12.5px;
+  padding: 12px 18px; border-radius: 12px; opacity: 0; pointer-events: none;
+  transition: opacity 0.3s, transform 0.3s; z-index: 60; box-shadow: 0 0 30px rgba(79,216,255,0.2);
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* ---- History ---- */
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.grid2 .span2 { grid-column: 1 / -1; }
+@media (max-width: 720px) { .grid2 { grid-template-columns: 1fr; } }
+
+.heat { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; margin-top: 6px; }
+.heat-cell { aspect-ratio: 1; border-radius: 4px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.04); }
+.heat-cell[data-q="yellow"] { background: var(--q-yellow); }
+.heat-cell[data-q="red"]    { background: var(--q-red); }
+.heat-cell[data-q="blue"]   { background: var(--q-blue); }
+.heat-cell[data-q="green"]  { background: var(--q-green); }
+.heat-legend { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 10px; font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-tertiary); }
+.heat-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.heat-legend i { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
+
+.dist-row { display: flex; align-items: center; gap: 10px; margin-bottom: 9px; }
+.dist-name { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.10em; text-transform: uppercase; width: 58px; color: var(--text-secondary); }
+.dist-track { flex: 1; height: 10px; border-radius: 5px; background: rgba(255,255,255,0.05); overflow: hidden; }
+.dist-fill { height: 100%; border-radius: 5px; transition: width 0.6s; }
+.dist-count { font-family: var(--font-mono); font-size: 11px; color: var(--text-tertiary); width: 26px; text-align: right; }
+
+.recent-item { display: flex; align-items: center; gap: 11px; padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+.recent-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.recent-emo { font-size: 13.5px; color: var(--text-primary); font-weight: 600; }
+.recent-meta { font-family: var(--font-mono); font-size: 10.5px; color: var(--text-tertiary); margin-left: auto; white-space: nowrap; }
+
+.insight { font-size: 13.5px; line-height: 1.6; color: var(--text-secondary); }
+.insight b { color: var(--hud-bright); }
+.muted { font-family: var(--font-mono); font-size: 11px; color: var(--text-tertiary); }
+
+.reminder-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.mini-btn {
+  border: 1px solid rgba(79,216,255,0.3); background: var(--hud-dim); color: var(--hud-bright);
+  border-radius: 10px; padding: 9px 14px; font-family: var(--font-mono); font-size: 11.5px; cursor: pointer;
+}
+.mini-btn:hover { background: rgba(79,216,255,0.2); }
+.hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="dash-eyebrow">Alban · Emotional Grid · How We Feel</div>
+  <h1 class="dash-title">MOOD</h1>
+
+  <!-- ===== STEP 1: quadrant ===== -->
+  <div id="step1">
+    <div class="section-title">Comment tu te sens, là ?</div>
+    <div class="axis-hint">↑ Énergie haute</div>
+    <div class="quad-grid">
+      <div class="quad" data-q="red">
+        <div class="quad-name">Rouge</div>
+        <div class="quad-desc">Énergie haute · désagréable</div>
+      </div>
+      <div class="quad" data-q="yellow">
+        <div class="quad-name">Jaune</div>
+        <div class="quad-desc">Énergie haute · agréable</div>
+      </div>
+      <div class="quad" data-q="blue">
+        <div class="quad-name">Bleu</div>
+        <div class="quad-desc">Énergie basse · désagréable</div>
+      </div>
+      <div class="quad" data-q="green">
+        <div class="quad-name">Vert</div>
+        <div class="quad-desc">Énergie basse · agréable</div>
+      </div>
+    </div>
+    <div class="axis-hint">↓ Énergie basse &nbsp;·&nbsp; ← désagréable &nbsp;|&nbsp; agréable →</div>
+  </div>
+
+  <!-- ===== STEP 2: emotion ===== -->
+  <div id="step2" class="hidden">
+    <div class="emo-head">
+      <button class="back-btn" id="back2">← Retour</button>
+      <span class="emo-quad-label" id="emoQuadLabel">—</span>
+      <span class="muted" id="emoHint">Choisis le mot le plus juste</span>
+    </div>
+    <div class="emo-grid" id="emoGrid"></div>
+  </div>
+
+  <!-- ===== STEP 3: context ===== -->
+  <div id="step3" class="hidden">
+    <div class="emo-head">
+      <button class="back-btn" id="back3">← Retour</button>
+      <span class="emo-quad-label" id="ctxEmoLabel">—</span>
+    </div>
+
+    <div class="hud-card" style="padding: 18px;">
+      <div class="ctx-group">
+        <div class="ctx-label">Où es-tu ?</div>
+        <div class="chips" id="chipsWhere"></div>
+      </div>
+      <div class="ctx-group">
+        <div class="ctx-label">Avec qui ?</div>
+        <div class="chips" id="chipsWho"></div>
+      </div>
+      <div class="ctx-group">
+        <div class="ctx-label">Tu faisais quoi ?</div>
+        <div class="chips" id="chipsWhat"></div>
+      </div>
+      <div class="ctx-group">
+        <div class="ctx-label">Note (optionnel)</div>
+        <textarea class="note-input" id="noteInput" placeholder="Qu'est-ce qui se passe pour toi en ce moment ?"></textarea>
+      </div>
+      <div class="auto-note" id="autoNote"></div>
+      <button class="save-btn" id="saveBtn">Enregistrer ce moment</button>
+    </div>
+  </div>
+
+  <!-- ===== HISTORY ===== -->
+  <div class="section-title">Historique</div>
+  <div class="grid2">
+    <div class="hud-card hud-wrap span2">
+      <div class="hud-head">
+        <div class="hud-eyebrow">35 derniers jours</div>
+        <div class="hud-state" id="heatCount">—</div>
+      </div>
+      <div class="heat" id="heat"></div>
+      <div class="heat-legend">
+        <span><i style="background:var(--q-yellow)"></i>Jaune</span>
+        <span><i style="background:var(--q-red)"></i>Rouge</span>
+        <span><i style="background:var(--q-blue)"></i>Bleu</span>
+        <span><i style="background:var(--q-green)"></i>Vert</span>
+      </div>
+    </div>
+
+    <div class="hud-card hud-wrap">
+      <div class="hud-head"><div class="hud-eyebrow">Répartition · 30 jours</div></div>
+      <div id="dist"></div>
+    </div>
+
+    <div class="hud-card hud-wrap">
+      <div class="hud-head"><div class="hud-eyebrow">Derniers check-ins</div></div>
+      <div id="recent"></div>
+    </div>
+
+    <div class="hud-card hud-wrap span2">
+      <div class="hud-head"><div class="hud-eyebrow">Sommeil × Humeur</div></div>
+      <div class="insight" id="sleepInsight"><span class="muted">Calcul en cours…</span></div>
+    </div>
+
+    <div class="hud-card hud-wrap span2">
+      <div class="reminder-row">
+        <div>
+          <div class="hud-eyebrow" style="margin-bottom:4px;">Rappels</div>
+          <div class="muted" id="reminderState">Reçois une invitation à faire ton check-in matin, midi et soir.</div>
+        </div>
+        <button class="mini-btn" id="reminderBtn">Activer les rappels</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  'use strict';
+  var SUPABASE_URL = 'https://uqvlfypjpgcubpmejqky.supabase.co';
+  var SUPABASE_KEY = 'sb_publishable_akUg3CaJheNW-l9j-WtTvw_klhPg20a';
+
+  // ---- 144 emotions: 4 quadrants x 36, sorted intense -> mild ----
+  var EMO = {
+    yellow: [
+      ['Euphorique','joie intense qui déborde'],['Exalté','transporté par l’enthousiasme'],['Galvanisé','dopé, prêt à foncer'],
+      ['Enthousiaste','plein d’élan et d’envie d’agir'],['Excité','impatience joyeuse avant quelque chose'],['Passionné','brûlant d’envie pour quelque chose'],
+      ['Amoureux','le cœur qui s’emballe'],['Conquérant','l’envie de tout remporter'],['Triomphant','porté par une victoire'],
+      ['Puissant','capable, en position de force'],['Audacieux','prêt à tout oser'],['Déterminé','décidé, rien ne t’arrête'],
+      ['Ambitieux','tourné vers de grands objectifs'],['Motivé','poussé à avancer vers un but'],['Énergique','débordant de vitalité'],
+      ['Vibrant','chaque fibre en mouvement'],['Pétillant','plein de vie et d’entrain'],['Joyeux','bonheur vif et communicatif'],
+      ['Radieux','tu rayonnes de bien-être'],['Festif','d’humeur à célébrer'],['Espiègle','joueur et taquin'],
+      ['Amusé','l’envie de rire te gagne'],['Inspiré','traversé par des idées nouvelles'],['Créatif','les idées coulent librement'],
+      ['Stimulé','l’esprit en éveil, aiguisé'],['Concentré','attention pleine et nette'],['Productif','tu enchaînes et tu avances'],
+      ['Curieux','avide de découvrir'],['Émerveillé','saisi par la beauté d’un instant'],['Confiant','sûr de tes moyens'],
+      ['Fier','satisfait de ce que tu as accompli'],['Accompli','aligné et pleinement toi'],['Optimiste','tu vois l’avenir en positif'],
+      ['Vivant','pleinement présent et éveillé'],['Enjoué','de bonne humeur, léger'],['Libéré','délesté d’un poids, léger']
+    ],
+    red: [
+      ['Enragé','hors de toi'],['Furieux','colère brûlante'],['Terrifié','peur qui te glace'],
+      ['Paniqué','alarme totale, tu perds pied'],['Submergé','noyé sous la charge'],['Angoissé','peur sourde et oppressante'],
+      ['En colère','révolté par une injustice'],['Révolté','tu refuses ce qui se passe'],['Indigné','scandalisé par l’injustice'],
+      ['Hostile','sur la défensive, agressif'],['Dégoûté','répulsion vive'],['Amer','rancœur qui reste en travers'],
+      ['Jaloux','menacé de perdre ce qui compte'],['Envieux','tu voudrais ce qu’a l’autre'],['Frustré','bloqué, empêché d’avancer'],
+      ['Irrité','quelque chose t’agace'],['Agacé','patience à bout'],['Contrarié','pris à rebrousse-poil'],
+      ['Vexé','touché dans ton amour-propre'],['Humilié','rabaissé devant les autres'],['Choqué','pris de court, sonné'],
+      ['Déstabilisé','tes repères vacillent'],['Stressé','sous tension, trop à gérer'],['Débordé','plus assez de place pour tout'],
+      ['Sous pression','le temps te court après'],['Pressé','tu ne tiens plus en place'],['Impatient','tu attends avec agacement'],
+      ['Nerveux','agité, incapable de te poser'],['Tendu','corps et esprit crispés'],['Crispé','noué de l’intérieur'],
+      ['Anxieux','inquiétude diffuse qui serre'],['Inquiet','l’esprit tourné vers un danger'],['Méfiant','tu te tiens sur tes gardes'],
+      ['Apeuré','la peur prend le dessus'],['Honteux','tu voudrais disparaître'],['Coupable','tu te reproches quelque chose']
+    ],
+    blue: [
+      ['Désespéré','plus aucune lueur'],['Déprimé','enfermé dans le noir'],['Abattu','le moral au plus bas'],
+      ['Accablé','écrasé par le poids'],['Vide','plus rien à l’intérieur'],['Impuissant','rien que tu puisses faire'],
+      ['Découragé','l’envie d’abandonner'],['Résigné','tu subis sans lutter'],['Pessimiste','tu n’attends rien de bon'],
+      ['Triste','le cœur lourd'],['Peiné','la peine te traverse'],['Mélancolique','tristesse douce et vague'],
+      ['Morose','sombre et sans entrain'],['Cafardeux','le cafard t’accompagne'],['Nostalgique','le manque d’un avant'],
+      ['Déçu','l’attente qui retombe'],['Seul','coupé des autres'],['Isolé','à l’écart, sans lien'],
+      ['Incompris','personne ne te saisit'],['Vulnérable','à vif, sans protection'],['Insécure','tu doutes de ta valeur'],
+      ['Perdu','tu ne sais plus où aller'],['Confus','les idées embrouillées'],['Distant','retiré, ailleurs'],
+      ['Renfermé','replié sur toi'],['Indifférent','détaché de tout'],['Apathique','plus rien ne te motive'],
+      ['Blasé','plus rien ne t’atteint'],['Démotivé','plus envie de rien'],['Ennuyé','le temps qui traîne'],
+      ['Éteint','la flamme est tombée'],['Mou','sans énergie ni volonté'],['Amorphe','sans ressort ni élan'],
+      ['Las','usé, à bout de forces'],['Fatigué','besoin urgent de repos'],['Épuisé','vidé de toute énergie']
+    ],
+    green: [
+      ['Béat','bonheur tranquille et léger'],['Comblé','plein et sans manque'],['Épanoui','bien dans ta peau'],
+      ['Ressourcé','rechargé de l’intérieur'],['Reposé','récupéré, frais'],['Reconnaissant','gratitude tranquille'],
+      ['Satisfait','comblé par ce qui est'],['Content','simplement bien'],['Harmonieux','tout s’accorde en toi'],
+      ['Serein','en paix, sans remous'],['Zen','détaché et centré'],['Paisible','doux et posé'],
+      ['Calme','l’esprit tranquille'],['Apaisé','la tension retombée'],['Détendu','le corps relâché'],
+      ['Relâché','toute pression tombée'],['Tranquille','rien ne te presse'],['Posé','calme et mesuré'],
+      ['Équilibré','stable et posé'],['Centré','ancré en toi-même'],['Présent','pleinement dans l’instant'],
+      ['Assuré','tranquillement confiant'],['En sécurité','protégé, hors de danger'],['Réconforté','apaisé par une présence'],
+      ['Soutenu','épaulé, pas seul'],['Connecté','relié aux autres'],['Aimé','entouré d’affection'],
+      ['Chaleureux','le cœur ouvert'],['Tendre','plein de douceur'],['Bienveillant','doux envers toi et les autres'],
+      ['Attendri','touché avec douceur'],['Confortable','bien installé, à l’aise'],['Douillet','au chaud, cocooné'],
+      ['Léger','délesté, sans souci'],['Rêveur','l’esprit qui flâne'],['Contemplatif','tu observes, paisible']
+    ]
+  };
+  var Q_COLOR = { yellow:'var(--q-yellow)', red:'var(--q-red)', blue:'var(--q-blue)', green:'var(--q-green)' };
+  var Q_HEX   = { yellow:'#F2C063', red:'#FF5C4D', blue:'#4F86FF', green:'#46D6A2' };
+  var Q_LABEL = { yellow:'Jaune', red:'Rouge', blue:'Bleu', green:'Vert' };
+
+  var WHERE = ['Maison','Travail','Salle','Escalade','Dehors','Chez des amis','Transport'];
+  var WHO   = ['Seul','Partenaire','Ami·es','Famille','Collègues','Inconnus'];
+  var WHAT  = ['Sport','Boulot','Détente','Repas','Écran','Sortie','Tâches','Sommeil'];
+
+  var sel = { quadrant: null, emotion: null, where: [], who: [], what: [] };
+  var attachedSleep = null; // { date, hours }
+  var attachedWeather = null;
+
+  function $(id) { return document.getElementById(id); }
+  function show(step) {
+    $('step1').classList.toggle('hidden', step !== 1);
+    $('step2').classList.toggle('hidden', step !== 2);
+    $('step3').classList.toggle('hidden', step !== 3);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+  function toast(msg) {
+    var t = $('toast'); t.textContent = msg; t.classList.add('show');
+    clearTimeout(t._t); t._t = setTimeout(function () { t.classList.remove('show'); }, 2600);
+  }
+
+  // ---- Step 1 -> 2 ----
+  document.querySelectorAll('.quad').forEach(function (q) {
+    q.addEventListener('click', function () {
+      sel.quadrant = q.dataset.q; sel.emotion = null;
+      buildEmotions(sel.quadrant);
+      show(2);
+    });
+  });
+
+  function buildEmotions(q) {
+    var label = $('emoQuadLabel');
+    label.textContent = Q_LABEL[q];
+    label.style.color = Q_HEX[q];
+    var grid = $('emoGrid');
+    grid.innerHTML = '';
+    EMO[q].forEach(function (e) {
+      var b = document.createElement('div');
+      b.className = 'emo';
+      b.style.setProperty('--sel', Q_HEX[q]);
+      b.innerHTML = '<div class="emo-name"></div><div class="emo-def"></div>';
+      b.querySelector('.emo-name').textContent = e[0];
+      b.querySelector('.emo-def').textContent = e[1];
+      b.addEventListener('click', function () {
+        grid.querySelectorAll('.emo').forEach(function (x) { x.classList.remove('is-selected'); });
+        b.classList.add('is-selected');
+        sel.emotion = e[0];
+        // brief pause so the definition is visible, then advance
+        clearTimeout(buildEmotions._t);
+        buildEmotions._t = setTimeout(function () { openContext(); }, 480);
+      });
+      grid.appendChild(b);
+    });
+  }
+
+  // ---- Step 2 -> 3 ----
+  function chipRow(container, values, bucket) {
+    container.innerHTML = '';
+    values.forEach(function (v) {
+      var c = document.createElement('div');
+      c.className = 'chip'; c.textContent = v;
+      c.addEventListener('click', function () {
+        var i = sel[bucket].indexOf(v);
+        if (i === -1) { sel[bucket].push(v); c.classList.add('on'); }
+        else { sel[bucket].splice(i, 1); c.classList.remove('on'); }
+      });
+      container.appendChild(c);
+    });
+  }
+  function openContext() {
+    loadWeather(); // ask for location only when actually doing a check-in
+    var l = $('ctxEmoLabel');
+    l.textContent = sel.emotion + ' · ' + Q_LABEL[sel.quadrant];
+    l.style.color = Q_HEX[sel.quadrant];
+    sel.where = []; sel.who = []; sel.what = [];
+    chipRow($('chipsWhere'), WHERE, 'where');
+    chipRow($('chipsWho'), WHO, 'who');
+    chipRow($('chipsWhat'), WHAT, 'what');
+    $('noteInput').value = '';
+    renderAutoNote();
+    show(3);
+  }
+  function renderAutoNote() {
+    var bits = [];
+    if (attachedSleep) bits.push('🛌 nuit de ' + attachedSleep.hours.toFixed(1) + 'h attachée');
+    if (attachedWeather) bits.push('🌡 ' + attachedWeather.t + '°C, ' + attachedWeather.d);
+    $('autoNote').textContent = bits.length ? 'Rattaché automatiquement : ' + bits.join(' · ') : '';
+  }
+
+  $('back2').addEventListener('click', function () { show(1); });
+  $('back3').addEventListener('click', function () { show(2); });
+
+  // ---- Save ----
+  $('saveBtn').addEventListener('click', async function () {
+    if (!sel.quadrant || !sel.emotion) return;
+    var btn = this; btn.disabled = true;
+    var tags = []
+      .concat(sel.where.map(function (x) { return 'où:' + x; }))
+      .concat(sel.who.map(function (x) { return 'qui:' + x; }))
+      .concat(sel.what.map(function (x) { return 'quoi:' + x; }));
+    var row = {
+      ts: new Date().toISOString(),
+      quadrant: sel.quadrant,
+      emotion: sel.emotion,
+      tags: tags,
+      note: $('noteInput').value.trim() || null,
+      weather: attachedWeather || null,
+      sleep_date: attachedSleep ? attachedSleep.date : null
+    };
+    try {
+      var res = await fetch(SUPABASE_URL + '/rest/v1/mood_checkins', {
+        method: 'POST',
+        headers: {
+          apikey: SUPABASE_KEY, Authorization: 'Bearer ' + SUPABASE_KEY,
+          'Content-Type': 'application/json', Prefer: 'return=minimal'
+        },
+        body: JSON.stringify(row)
+      });
+      if (!res.ok) throw new Error(await res.text());
+      toast('✓ Moment enregistré');
+      sel = { quadrant: null, emotion: null, where: [], who: [], what: [] };
+      show(1);
+      loadHistory();
+    } catch (e) {
+      toast('✗ Échec de l’enregistrement');
+      console.error('mood save failed', e);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  // ---- Auto-attach: latest tracked sleep + current weather ----
+  async function loadSleepAttachment() {
+    try {
+      var res = await fetch(SUPABASE_URL +
+        '/rest/v1/zepp_sleep?select=date,sleep_start,sleep_end,awake_min&order=date.desc&limit=5',
+        { headers: { apikey: SUPABASE_KEY, Authorization: 'Bearer ' + SUPABASE_KEY } });
+      var rows = res.ok ? await res.json() : [];
+      for (var i = 0; i < rows.length; i++) {
+        var r = rows[i];
+        if (!r.sleep_start || !r.sleep_end) continue;
+        var asleep = (new Date(r.sleep_end) - new Date(r.sleep_start)) / 60000 - (r.awake_min || 0);
+        if (asleep < 180) continue;
+        if (Date.now() - new Date(r.sleep_end).getTime() < 36 * 3600 * 1000) {
+          attachedSleep = { date: r.date, hours: asleep / 60 };
+        }
+        break;
+      }
+    } catch (e) { /* ignore */ }
+  }
+  var weatherTried = false;
+  function loadWeather() {
+    if (weatherTried || !navigator.geolocation) return;
+    weatherTried = true;
+    navigator.geolocation.getCurrentPosition(function (pos) {
+      var la = pos.coords.latitude.toFixed(3), lo = pos.coords.longitude.toFixed(3);
+      fetch('https://api.open-meteo.com/v1/forecast?latitude=' + la + '&longitude=' + lo + '&current=temperature_2m,weather_code')
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          if (d && d.current) {
+            attachedWeather = { t: Math.round(d.current.temperature_2m), code: d.current.weather_code, d: wcode(d.current.weather_code) };
+            renderAutoNote();
+          }
+        }).catch(function () {});
+    }, function () {}, { timeout: 5000, maximumAge: 3600000 });
+  }
+  function wcode(c) {
+    if (c === 0) return 'ciel clair';
+    if (c <= 2) return 'peu nuageux';
+    if (c === 3) return 'couvert';
+    if (c <= 48) return 'brouillard';
+    if (c <= 67) return 'pluie';
+    if (c <= 77) return 'neige';
+    if (c <= 82) return 'averses';
+    if (c <= 99) return 'orage';
+    return '—';
+  }
+
+  // ---- History rendering ----
+  function dayKey(d) {
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  }
+  function dominantQuadrant(list) {
+    var c = {}; list.forEach(function (x) { c[x.quadrant] = (c[x.quadrant] || 0) + 1; });
+    var best = null, n = -1;
+    Object.keys(c).forEach(function (k) { if (c[k] > n) { n = c[k]; best = k; } });
+    return best;
+  }
+
+  async function loadHistory() {
+    var checkins = [], sleeps = [];
+    try {
+      var since = new Date(Date.now() - 40 * 24 * 3600 * 1000).toISOString();
+      var r1 = await fetch(SUPABASE_URL + '/rest/v1/mood_checkins?select=*&ts=gte.' + since + '&order=ts.desc',
+        { headers: { apikey: SUPABASE_KEY, Authorization: 'Bearer ' + SUPABASE_KEY } });
+      if (r1.ok) checkins = await r1.json();
+      var r2 = await fetch(SUPABASE_URL + '/rest/v1/zepp_sleep?select=date,sleep_start,sleep_end,awake_min&order=date.desc&limit=40',
+        { headers: { apikey: SUPABASE_KEY, Authorization: 'Bearer ' + SUPABASE_KEY } });
+      if (r2.ok) sleeps = await r2.json();
+    } catch (e) { /* offline */ }
+
+    renderHeat(checkins);
+    renderDist(checkins);
+    renderRecent(checkins);
+    renderSleepInsight(checkins, sleeps);
+  }
+
+  function renderHeat(checkins) {
+    var byDay = {};
+    checkins.forEach(function (c) {
+      var k = dayKey(new Date(c.ts));
+      (byDay[k] = byDay[k] || []).push(c);
+    });
+    var heat = $('heat'); heat.innerHTML = '';
+    var today = new Date(); today.setHours(0, 0, 0, 0);
+    // Align to weeks: start 34 days back, then walk to today
+    var start = new Date(today.getTime() - 34 * 24 * 3600 * 1000);
+    for (var i = 0; i < 35; i++) {
+      var d = new Date(start.getTime() + i * 24 * 3600 * 1000);
+      var k = dayKey(d);
+      var cell = document.createElement('div');
+      cell.className = 'heat-cell';
+      cell.title = k;
+      if (byDay[k]) { cell.setAttribute('data-q', dominantQuadrant(byDay[k])); cell.title = k + ' · ' + byDay[k].length + ' check-in(s)'; }
+      heat.appendChild(cell);
+    }
+    var days = Object.keys(byDay).length;
+    $('heatCount').textContent = checkins.length + ' check-ins · ' + days + ' j';
+    if (checkins.length) $('heatCount').classList.add('is-online');
+  }
+
+  function renderDist(checkins) {
+    var last30 = checkins.filter(function (c) { return Date.now() - new Date(c.ts) < 30 * 24 * 3600 * 1000; });
+    var counts = { yellow: 0, red: 0, blue: 0, green: 0 };
+    last30.forEach(function (c) { if (counts[c.quadrant] != null) counts[c.quadrant]++; });
+    var total = last30.length || 1;
+    var order = ['green', 'yellow', 'blue', 'red'];
+    var box = $('dist'); box.innerHTML = '';
+    if (!last30.length) { box.innerHTML = '<div class="muted">Aucun check-in ce mois-ci.</div>'; return; }
+    order.forEach(function (q) {
+      var row = document.createElement('div'); row.className = 'dist-row';
+      row.innerHTML = '<div class="dist-name">' + Q_LABEL[q] + '</div>' +
+        '<div class="dist-track"><div class="dist-fill" style="width:' + (counts[q] / total * 100) + '%;background:' + Q_HEX[q] + '"></div></div>' +
+        '<div class="dist-count">' + counts[q] + '</div>';
+      box.appendChild(row);
+    });
+  }
+
+  function renderRecent(checkins) {
+    var box = $('recent'); box.innerHTML = '';
+    if (!checkins.length) { box.innerHTML = '<div class="muted">Pas encore de check-in — commence en haut de la page.</div>'; return; }
+    checkins.slice(0, 6).forEach(function (c) {
+      var d = new Date(c.ts);
+      var when = d.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric' }) + ' ' +
+        String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+      var item = document.createElement('div'); item.className = 'recent-item';
+      item.innerHTML = '<span class="recent-dot" style="background:' + Q_HEX[c.quadrant] + '"></span>' +
+        '<span class="recent-emo">' + c.emotion + '</span>' +
+        '<span class="recent-meta">' + when + '</span>';
+      box.appendChild(item);
+    });
+  }
+
+  function renderSleepInsight(checkins, sleeps) {
+    var el = $('sleepInsight');
+    var map = {}; // date -> asleep hours (tracked only)
+    sleeps.forEach(function (s) {
+      if (!s.sleep_start || !s.sleep_end) return;
+      var h = ((new Date(s.sleep_end) - new Date(s.sleep_start)) / 60000 - (s.awake_min || 0)) / 60;
+      if (h >= 3) map[s.date] = h;
+    });
+    var pleasant = [], unpleasant = [];
+    checkins.forEach(function (c) {
+      var h = c.sleep_date ? map[c.sleep_date] : null;
+      if (h == null) return;
+      if (c.quadrant === 'green' || c.quadrant === 'yellow') pleasant.push(h);
+      else unpleasant.push(h);
+    });
+    function avg(a) { return a.reduce(function (s, x) { return s + x; }, 0) / a.length; }
+    if (pleasant.length >= 3 && unpleasant.length >= 3) {
+      var p = avg(pleasant), u = avg(unpleasant);
+      var diff = p - u;
+      var verb = diff >= 0.2 ? 'suivent des nuits <b>plus longues</b>' : (diff <= -0.2 ? 'suivent des nuits <b>plus courtes</b>' : 'ne dépendent pas nettement de ta nuit');
+      el.innerHTML = 'Tes états <b>agréables</b> ' + verb + ' : ' +
+        '<b>' + p.toFixed(1) + 'h</b> en moyenne, contre <b>' + u.toFixed(1) + 'h</b> avant tes états désagréables.';
+    } else {
+      var need = 3 - Math.min(pleasant.length, unpleasant.length);
+      el.innerHTML = '<span class="muted">Continue tes check-ins en portant ton bracelet — encore quelques jours et je pourrai relier ton sommeil réel à ton humeur.</span>';
+    }
+  }
+
+  // ---- Reminders (best-effort PWA notifications) ----
+  var REM_KEY = 'mood_reminders_v1';
+  function updateReminderUI() {
+    var on = localStorage.getItem(REM_KEY) === '1' && ('Notification' in window) && Notification.permission === 'granted';
+    $('reminderBtn').textContent = on ? 'Rappels activés ✓' : 'Activer les rappels';
+    $('reminderState').textContent = on
+      ? 'Rappels matin (9h), midi (13h) et soir (20h) quand l’app est installée.'
+      : 'Reçois une invitation à faire ton check-in matin, midi et soir.';
+  }
+  $('reminderBtn').addEventListener('click', async function () {
+    if (!('Notification' in window)) { toast('Notifications non supportées'); return; }
+    var perm = await Notification.requestPermission();
+    if (perm === 'granted') {
+      localStorage.setItem(REM_KEY, '1');
+      scheduleReminders();
+      toast('✓ Rappels activés');
+      new Notification('JARVIS Mood', { body: 'Rappels activés. À tout à l’heure pour ton check-in.' });
+    } else {
+      toast('Notifications refusées');
+    }
+    updateReminderUI();
+  });
+  function scheduleReminders() {
+    // Best-effort: schedule the next reminder among 9h/13h/20h while the
+    // page/PWA is alive. Reliable background reminders come with a push
+    // server in a later phase.
+    if (Notification.permission !== 'granted') return;
+    var times = [9, 13, 20];
+    var now = new Date();
+    var next = null;
+    for (var i = 0; i < times.length; i++) {
+      var t = new Date(now); t.setHours(times[i], 0, 0, 0);
+      if (t > now) { next = t; break; }
+    }
+    if (!next) { next = new Date(now); next.setDate(next.getDate() + 1); next.setHours(times[0], 0, 0, 0); }
+    var ms = next - now;
+    if (ms > 0 && ms < 24 * 3600 * 1000) {
+      clearTimeout(scheduleReminders._t);
+      scheduleReminders._t = setTimeout(function () {
+        try { new Notification('JARVIS Mood', { body: 'Comment tu te sens, là ? Fais ton check-in en 10 s.' }); } catch (e) {}
+        scheduleReminders();
+      }, ms);
+    }
+  }
+
+  // ---- Service worker (installable PWA) ----
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js').catch(function () {});
+  }
+
+  // ---- Boot ----
+  loadSleepAttachment();
+  loadHistory();
+  updateReminderUI();
+  if (localStorage.getItem(REM_KEY) === '1') scheduleReminders();
+})();
+</script>
+</body>
+</html>

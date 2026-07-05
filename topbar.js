@@ -195,6 +195,10 @@ body.topbar-modal-open {
     <span class="topbar-pill-dot"></span>
     <span class="topbar-pill-label">MOOD</span>
   </a>
+  <a href="food.html" class="topbar-pill" id="topbarFood">
+    <span class="topbar-pill-dot"></span>
+    <span class="topbar-pill-label">FOOD</span>
+  </a>
   <a href="gym.html" class="topbar-pill" id="topbarGym">
     <span class="topbar-pill-dot"></span>
     <span class="topbar-pill-label">GYM</span>

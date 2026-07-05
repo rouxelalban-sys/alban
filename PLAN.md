@@ -12,7 +12,7 @@ via the Zepp app.
 | # | Phase | Contents | Status |
 |---|---|---|---|
 | 1 | Foundation + JARVIS design | `supabase-setup.sql` (all tables + pgvector), `jarvis.css`, `api/` skeleton, index rework with System Output gauge | ✅ done |
-| 2 | Zepp + Energy | `api/zepp-sync.js` (unofficial Huami API, daily Vercel cron), `sleep.html` (hypnogram, regularity, sleep debt), Rise-style circadian energy curve replacing the Day Ring, System Output gains a sleep component | ⬜ |
+| 2 | Zepp + Energy | `api/zepp-sync.js` (unofficial Huami API, daily Vercel cron), `sleep.html` (hypnogram, regularity, sleep debt), Rise-style circadian Energy Flow on index, System Output sleep component (once data flows) | 🔶 code done — needs Vercel env vars + first real sync against the Huami API |
 | 3 | Mood | `mood.html` — How We Feel: 4 quadrants × 36 emotions (144 words + definitions), PWA + push reminders, context tags, weather (open-meteo), auto-attached Zepp sleep, calendar heatmap, correlations | ⬜ |
 | 4 | Nutrition | `food.html` — MyFitnessPal-style macros, `api/food-vision.js` (Claude vision estimates macros from a plate photo), text quick-add, food library, OpenFoodFacts barcodes, weight log | ⬜ |
 | 5 | Sport | `climb.html` (sessions, sends, grade pyramid, projects) + extend `gym.html` (est. 1RM charts, weekly volume, PRs, recovery-modulated suggestions from HRV/sleep) | ⬜ |

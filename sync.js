@@ -5,8 +5,8 @@
 // =============================================================
 (function () {
   'use strict';
-  const SUPABASE_URL = 'https://cvkbfrqobqgdoiamjrqu.supabase.co';
-  const SUPABASE_KEY = 'sb_publishable_yPebAeVX7FXMo2rtf7HqGg_DNFKUjIp';
+  const SUPABASE_URL = 'https://uqvlfypjpgcubpmejqky.supabase.co';
+  const SUPABASE_KEY = 'sb_publishable_akUg3CaJheNW-l9j-WtTvw_klhPg20a';
 
   window.initCloudSync = function (config) {
     const appKey = config && config.appKey;

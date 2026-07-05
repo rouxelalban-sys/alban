@@ -19,8 +19,8 @@
 
 // Same Supabase project as sync.js/topbar.js (publishable key is
 // already public in the repo; RLS intentionally disabled).
-const SUPABASE_URL = process.env.SUPABASE_URL || 'https://cvkbfrqobqgdoiamjrqu.supabase.co';
-const SUPABASE_KEY = process.env.SUPABASE_KEY || 'sb_publishable_yPebAeVX7FXMo2rtf7HqGg_DNFKUjIp';
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://uqvlfypjpgcubpmejqky.supabase.co';
+const SUPABASE_KEY = process.env.SUPABASE_KEY || 'sb_publishable_akUg3CaJheNW-l9j-WtTvw_klhPg20a';
 
 const REDIRECT_URI = 'https://s3-us-west-2.amazonaws.com/hm-registration/successsignin.html';
 

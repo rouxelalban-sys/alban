@@ -1,0 +1,5 @@
+{
+  "crons": [
+    { "path": "/api/zepp-sync", "schedule": "30 9 * * *" }
+  ]
+}

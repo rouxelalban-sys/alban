@@ -187,6 +187,10 @@ body.topbar-modal-open {
     </a>
     <button class="topbar-water-add" id="topbarWaterAdd" aria-label="Log one drink" type="button">+</button>
   </div>
+  <a href="sleep.html" class="topbar-pill" id="topbarSleep">
+    <span class="topbar-pill-dot"></span>
+    <span class="topbar-pill-label">SLEEP</span>
+  </a>
   <a href="gym.html" class="topbar-pill" id="topbarGym">
     <span class="topbar-pill-dot"></span>
     <span class="topbar-pill-label">GYM</span>

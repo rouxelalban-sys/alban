@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#020610">
+<title>JARVIS — Sleep</title>
+<link rel="stylesheet" href="jarvis.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="topbar.js" defer></script>
+<style>
+/* JARVIS HUD tokens — duplicated from jarvis.css on purpose, so the
+   page can never render white if the external stylesheet fails. */
+:root {
+  --bg: #020610;
+  --text-primary: #EAF6FB;
+  --text-secondary: #9FB6C4;
+  --text-tertiary: #5E7686;
+  --hud: #4FD8FF;
+  --hud-bright: #9BEBFF;
+  --hud-dim: rgba(79, 216, 255, 0.14);
+  --hud-glow: rgba(79, 216, 255, 0.45);
+  --cold: #3A4A66;
+  --cold-deep: #1A2A4A;
+  --success: #4FD8FF;
+  --warning: #F2C063;
+  --danger: #FF5C4D;
+  --font: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; padding: 0;
+  background: var(--bg);
+  color: var(--text-secondary);
+  font-family: var(--font);
+  -webkit-font-smoothing: antialiased;
+}
+body {
+  min-height: 100vh;
+  position: relative;
+  overflow-x: hidden;
+  padding: max(28px, env(safe-area-inset-top)) 20px 60px;
+}
+body::before {
+  content: '';
+  position: fixed; inset: 0;
+  background:
+    radial-gradient(circle at 78% 12%, rgba(79, 216, 255, 0.10), transparent 45%),
+    radial-gradient(circle at 15% 85%, rgba(46, 124, 214, 0.09), transparent 50%);
+  filter: blur(40px);
+  pointer-events: none;
+  z-index: -2;
+}
+body::after {
+  content: '';
+  position: fixed; inset: 0;
+  background-image:
+    radial-gradient(1px 1px at 12% 22%, rgba(255,255,255,0.35), transparent 100%),
+    radial-gradient(1px 1px at 68% 12%, rgba(190,230,255,0.30), transparent 100%),
+    radial-gradient(1.5px 1.5px at 42% 58%, rgba(255,255,255,0.22), transparent 100%),
+    radial-gradient(1px 1px at 86% 74%, rgba(190,230,255,0.28), transparent 100%),
+    radial-gradient(1px 1px at 24% 86%, rgba(255,255,255,0.20), transparent 100%);
+  background-size: 520px 520px, 460px 460px, 610px 610px, 550px 550px, 490px 490px;
+  pointer-events: none;
+  z-index: -1;
+}
+
+.page { max-width: 1100px; margin: 0 auto; }
+
+.dash-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 9.5px; font-weight: 800;
+  letter-spacing: 0.24em; text-transform: uppercase;
+  color: var(--text-tertiary);
+  margin-bottom: 4px;
+}
+.dash-title {
+  margin: 0 0 18px;
+  font-size: 28px; font-weight: 700; letter-spacing: 0.06em;
+  background: linear-gradient(180deg, #FFFFFF 0%, #4FD8FF 140%);
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent; color: transparent;
+  filter: drop-shadow(0 0 14px rgba(79, 216, 255, 0.30));
+}
+@media (max-width: 480px) { .dash-title { font-size: 22px; } }
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+.grid .span2 { grid-column: 1 / -1; }
+@media (max-width: 720px) { .grid { grid-template-columns: 1fr; } }
+
+.stat-row { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.stat-big {
+  font-size: 42px; font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.045em;
+  color: var(--text-primary);
+  line-height: 1;
+}
+.stat-unit { font-family: var(--font-mono); font-size: 15px; color: var(--text-tertiary); }
+.stat-sub  { font-family: var(--font-mono); font-size: 11.5px; color: var(--text-secondary); margin-top: 8px; }
+.stat-note { font-family: var(--font-mono); font-size: 10.5px; color: var(--text-tertiary); margin-top: 3px; }
+
+.score-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 12px; border-radius: 999px;
+  font-family: var(--font-mono); font-size: 12px; font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  background: var(--hud-dim);
+  border: 1px solid rgba(79,216,255,0.30);
+  color: var(--hud-bright);
+}
+
+/* Hypnogram strip */
+.hypno {
+  display: flex; height: 34px;
+  border-radius: 8px; overflow: hidden;
+  margin-top: 16px;
+  border: 1px solid rgba(79,216,255,0.14);
+  background: rgba(0,0,0,0.3);
+}
+.hypno-seg { height: 100%; }
+.hypno-seg.deep  { background: #1273A8; }
+.hypno-seg.light { background: rgba(79,216,255,0.38); }
+.hypno-seg.rem   { background: #9BEBFF; }
+.hypno-seg.awake { background: rgba(255,92,77,0.75); }
+.hypno-legend {
+  display: flex; gap: 12px; flex-wrap: wrap;
+  margin-top: 8px;
+  font-family: var(--font-mono); font-size: 9.5px;
+  letter-spacing: 0.10em; text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+.hypno-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.hypno-legend i { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
+
+svg.chart { width: 100%; height: auto; display: block; margin-top: 10px; }
+
+.empty-hud {
+  text-align: center;
+  padding: 40px 20px;
+  font-family: var(--font-mono);
+  color: var(--text-tertiary);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  line-height: 2;
+}
+.empty-hud b { color: var(--hud); font-weight: 800; }
+
+.debt-ok   { color: var(--hud-bright) !important; }
+.debt-warn { color: var(--warning) !important; }
+.debt-bad  { color: var(--danger) !important; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="dash-eyebrow">Alban · Sleep Bay · Helio Strap</div>
+  <h1 class="dash-title">SLEEP</h1>
+
+  <div id="emptyState" class="hud-card empty-hud" style="display:none;">
+    <b>AWAITING FIRST SYNC</b><br>
+    No nights in the databank yet.<br>
+    Deploy, set ZEPP_EMAIL / ZEPP_PASSWORD in Vercel, then open <b>/api/zepp-sync?days=30</b>.
+  </div>
+
+  <div id="content" class="grid" style="display:none;">
+
+    <!-- Night report -->
+    <div class="hud-card hud-wrap span2">
+      <div class="hud-head">
+        <div class="hud-eyebrow" id="nightLabel">Night Report</div>
+        <div class="score-pill" id="nightScore" style="display:none;">— /100</div>
+      </div>
+      <div class="stat-row">
+        <span class="stat-big" id="nightDur">—</span>
+        <span class="stat-unit">asleep</span>
+      </div>
+      <div class="stat-sub" id="nightTimes">—</div>
+      <div class="hypno" id="hypno"></div>
+      <div class="hypno-legend">
+        <span><i style="background:#1273A8"></i>Deep</span>
+        <span><i style="background:rgba(79,216,255,0.38)"></i>Light</span>
+        <span><i style="background:#9BEBFF"></i>REM</span>
+        <span><i style="background:rgba(255,92,77,0.75)"></i>Awake</span>
+      </div>
+      <div class="stat-note" id="nightBreak">—</div>
+    </div>
+
+    <!-- Last 7 nights -->
+    <div class="hud-card hud-wrap span2">
+      <div class="hud-head">
+        <div class="hud-eyebrow">Last 7 Nights</div>
+        <div class="hud-state" id="weekAvg">—</div>
+      </div>
+      <svg class="chart" id="weekChart" viewBox="0 0 700 150" preserveAspectRatio="none"></svg>
+    </div>
+
+    <!-- Sleep debt -->
+    <div class="hud-card hud-wrap">
+      <div class="hud-head">
+        <div class="hud-eyebrow">Sleep Debt · 14 nights</div>
+      </div>
+      <div class="stat-row">
+        <span class="stat-big" id="debtNum">—</span>
+        <span class="stat-unit">hours</span>
+      </div>
+      <div class="stat-note" id="debtNote">vs 8h need per night</div>
+    </div>
+
+    <!-- Regularity -->
+    <div class="hud-card hud-wrap">
+      <div class="hud-head">
+        <div class="hud-eyebrow">Bedtime Regularity</div>
+      </div>
+      <div class="stat-row">
+        <span class="stat-big" id="regNum">—</span>
+      </div>
+      <div class="stat-note" id="regNote">average bedtime deviation — under ±30m is elite</div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var SUPABASE_URL = 'https://cvkbfrqobqgdoiamjrqu.supabase.co';
+  var SUPABASE_KEY = 'sb_publishable_yPebAeVX7FXMo2rtf7HqGg_DNFKUjIp';
+  var NEED_MIN = 8 * 60; // nightly need, minutes
+
+  function fmtHM(mins) {
+    var h = Math.floor(mins / 60), m = Math.round(mins % 60);
+    return h + 'h' + (m ? String(m).padStart(2, '0') : '');
+  }
+  function fmtClock(iso) {
+    var d = new Date(iso);
+    return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+  }
+  function spanMin(row) {
+    return (new Date(row.sleep_end) - new Date(row.sleep_start)) / 60000;
+  }
+  function asleepMin(row) {
+    var span = spanMin(row);
+    var awake = row.awake_min || 0;
+    return Math.max(0, span - awake);
+  }
+
+  function renderNight(row) {
+    document.getElementById('nightLabel').textContent = 'Night Report — ' + row.date;
+    document.getElementById('nightDur').textContent = fmtHM(asleepMin(row));
+    document.getElementById('nightTimes').textContent =
+      fmtClock(row.sleep_start) + ' → ' + fmtClock(row.sleep_end);
+    if (row.score != null) {
+      var sp = document.getElementById('nightScore');
+      sp.style.display = '';
+      sp.textContent = row.score + ' /100';
+    }
+
+    var hyp = document.getElementById('hypno');
+    hyp.innerHTML = '';
+    var stage = row.raw && row.raw.slp && Array.isArray(row.raw.slp.stage) ? row.raw.slp.stage : null;
+    var MODES = { 4: 'light', 5: 'deep', 7: 'awake', 8: 'rem' };
+    if (stage && stage.length) {
+      var total = stage.reduce(function (s, x) { return s + (x.stop - x.start); }, 0) || 1;
+      stage.forEach(function (x) {
+        var seg = document.createElement('div');
+        seg.className = 'hypno-seg ' + (MODES[x.mode] || 'light');
+        seg.style.width = ((x.stop - x.start) / total * 100) + '%';
+        hyp.appendChild(seg);
+      });
+    } else {
+      // No stage detail — proportional deep/light/rem blocks
+      var parts = [
+        ['deep', row.deep_min || 0], ['light', row.light_min || 0],
+        ['rem', row.rem_min || 0], ['awake', row.awake_min || 0]
+      ];
+      var sum = parts.reduce(function (s, p) { return s + p[1]; }, 0) || 1;
+      parts.forEach(function (p) {
+        if (!p[1]) return;
+        var seg = document.createElement('div');
+        seg.className = 'hypno-seg ' + p[0];
+        seg.style.width = (p[1] / sum * 100) + '%';
+        hyp.appendChild(seg);
+      });
+    }
+
+    var bits = [];
+    if (row.deep_min != null)  bits.push('deep ' + fmtHM(row.deep_min));
+    if (row.light_min != null) bits.push('light ' + fmtHM(row.light_min));
+    if (row.rem_min)           bits.push('REM ' + fmtHM(row.rem_min));
+    if (row.awake_min)         bits.push('awake ' + fmtHM(row.awake_min));
+    document.getElementById('nightBreak').textContent = bits.join(' · ') || '—';
+  }
+
+  function renderWeek(rows) {
+    var last7 = rows.slice(0, 7).reverse();
+    var svg = document.getElementById('weekChart');
+    var W = 700, H = 150, PAD = 22, MAXMIN = 10 * 60;
+    var bw = (W - PAD * 2) / 7;
+    var html = '';
+    // 8h target line
+    var ty = H - 24 - (NEED_MIN / MAXMIN) * (H - 44);
+    html += '<line x1="' + PAD + '" y1="' + ty + '" x2="' + (W - PAD) + '" y2="' + ty +
+            '" stroke="rgba(242,192,99,0.5)" stroke-width="1" stroke-dasharray="5 5"/>';
+    var sum = 0;
+    last7.forEach(function (r, i) {
+      var mins = asleepMin(r);
+      sum += mins;
+      var bh = Math.min(mins / MAXMIN, 1) * (H - 44);
+      var x = PAD + i * bw + bw * 0.18, y = H - 24 - bh;
+      var good = mins >= NEED_MIN - 30;
+      html += '<rect x="' + x + '" y="' + y + '" width="' + (bw * 0.64) + '" height="' + bh +
+              '" rx="4" fill="' + (good ? 'rgba(79,216,255,0.85)' : 'rgba(79,216,255,0.30)') + '"/>';
+      html += '<text x="' + (PAD + i * bw + bw / 2) + '" y="' + (H - 8) +
+              '" text-anchor="middle" font-size="10" font-family="ui-monospace,monospace" fill="#5E7686">' +
+              r.date.slice(8) + '/' + r.date.slice(5, 7) + '</text>';
+      html += '<text x="' + (PAD + i * bw + bw / 2) + '" y="' + (y - 5) +
+              '" text-anchor="middle" font-size="10" font-family="ui-monospace,monospace" fill="#9FB6C4">' +
+              fmtHM(mins) + '</text>';
+    });
+    svg.innerHTML = html;
+    if (last7.length) {
+      document.getElementById('weekAvg').textContent = 'avg ' + fmtHM(sum / last7.length);
+      document.getElementById('weekAvg').classList.add('is-online');
+    }
+  }
+
+  function renderDebt(rows) {
+    var last14 = rows.slice(0, 14);
+    var debt = 0;
+    last14.forEach(function (r) { debt += Math.max(0, NEED_MIN - asleepMin(r)); });
+    var hours = debt / 60;
+    var el = document.getElementById('debtNum');
+    el.textContent = (hours >= 0.05 ? '−' : '') + hours.toFixed(1);
+    el.classList.add(hours < 2 ? 'debt-ok' : hours < 5 ? 'debt-warn' : 'debt-bad');
+    document.getElementById('debtNote').textContent =
+      'vs 8h need · over ' + last14.length + ' night' + (last14.length > 1 ? 's' : '');
+  }
+
+  function renderRegularity(rows) {
+    var last14 = rows.slice(0, 14);
+    if (last14.length < 2) { document.getElementById('regNum').textContent = '—'; return; }
+    // bedtime as minutes relative to midnight, normalized around midnight
+    var mins = last14.map(function (r) {
+      var d = new Date(r.sleep_start);
+      var m = d.getHours() * 60 + d.getMinutes();
+      return m < 12 * 60 ? m + 24 * 60 : m; // 01:30 -> 25.5h so 23:00/01:00 average sanely
+    });
+    var avg = mins.reduce(function (s, x) { return s + x; }, 0) / mins.length;
+    var sd = Math.sqrt(mins.reduce(function (s, x) { return s + (x - avg) * (x - avg); }, 0) / mins.length);
+    var el = document.getElementById('regNum');
+    el.textContent = '±' + Math.round(sd) + 'm';
+    el.classList.add(sd <= 30 ? 'debt-ok' : sd <= 60 ? 'debt-warn' : 'debt-bad');
+    var ah = Math.floor((avg % (24 * 60)) / 60), am = Math.round(avg % 60);
+    document.getElementById('regNote').textContent =
+      'average bedtime ' + String(ah).padStart(2, '0') + ':' + String(am).padStart(2, '0') +
+      ' — under ±30m is elite';
+  }
+
+  async function boot() {
+    var rows = [];
+    try {
+      var res = await fetch(SUPABASE_URL + '/rest/v1/zepp_sleep?select=*&order=date.desc&limit=30', {
+        headers: { apikey: SUPABASE_KEY, Authorization: 'Bearer ' + SUPABASE_KEY }
+      });
+      if (res.ok) rows = await res.json();
+    } catch (e) { /* offline — empty state below */ }
+
+    if (!rows.length) {
+      document.getElementById('emptyState').style.display = 'block';
+      return;
+    }
+    document.getElementById('content').style.display = 'grid';
+    renderNight(rows[0]);
+    renderWeek(rows);
+    renderDebt(rows);
+    renderRegularity(rows);
+  }
+
+  boot();
+})();
+</script>
+</body>
+</html>

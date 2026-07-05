@@ -267,6 +267,10 @@ body::after {
   .day-ring-status { font-size: 13px; }
 }
 
+/* ===== Energy Flow (Rise-style circadian curve) ===== */
+.energy-svg { width: 100%; height: auto; display: block; margin-top: 4px; }
+.energy-meta-link { text-decoration: none; }
+
 /* ===== Component 4: section + To Do List ===== */
 .section { margin-top: 8px; }
 .section-title {
@@ -712,6 +716,15 @@ body::after {
       <div class="day-ring-remaining" id="dayRingRemaining">—</div>
       <div class="day-ring-hours">8:00 AM – 12:00 AM</div>
     </div>
+  </div>
+
+  <div class="hud-card hud-wrap">
+    <div class="hud-head">
+      <div class="hud-eyebrow">Energy Flow · Circadian</div>
+      <a href="sleep.html" class="hud-state energy-meta-link" id="energyMeta">—</a>
+    </div>
+    <svg class="energy-svg" id="energySvg" viewBox="0 0 720 170" preserveAspectRatio="none"></svg>
+    <div class="hud-break" id="energyZones"></div>
   </div>
 
   <div class="section">
@@ -1461,6 +1474,142 @@ body::after {
   window.addEventListener('focus', renderHud);
   setInterval(renderHud, 60 * 1000);
 
+  // ---------- Energy Flow (Rise-style circadian curve) ----------
+  // Two-process model, simplified: the curve shape is anchored on the
+  // real wake-up time from the Helio Strap (zepp_sleep, phase 2);
+  // last night's duration scales the amplitude. Until the band pipeline
+  // has data, a simulated 8h night keeps the widget alive.
+  const ENERGY_SUPABASE_URL = 'https://cvkbfrqobqgdoiamjrqu.supabase.co';
+  const ENERGY_SUPABASE_KEY = 'sb_publishable_yPebAeVX7FXMo2rtf7HqGg_DNFKUjIp';
+  // Relative energy per hour since wake-up (0..17h): grogginess,
+  // morning peak, afternoon dip, evening peak, wind-down.
+  const ENERGY_SHAPE = [12, 30, 55, 78, 88, 82, 68, 52, 42, 44, 56, 66, 68, 60, 48, 34, 22, 14];
+  let energyState = null; // { wake, durMin, simulated }
+
+  function shapeAt(h) {
+    if (h <= 0) return ENERGY_SHAPE[0];
+    if (h >= ENERGY_SHAPE.length - 1) return ENERGY_SHAPE[ENERGY_SHAPE.length - 1];
+    const i = Math.floor(h), t = h - i;
+    return lerp(ENERGY_SHAPE[i], ENERGY_SHAPE[i + 1], t);
+  }
+  function fmtHourLabel(h) {
+    const hh = ((h % 24) + 24) % 24;
+    const m = Math.round((hh % 1) * 60);
+    return String(Math.floor(hh)).padStart(2, '0') + ':' + String(m).padStart(2, '0');
+  }
+
+  function renderEnergy() {
+    if (!energyState) return;
+    const { wake, durMin, simulated } = energyState;
+    const svg = document.getElementById('energySvg');
+    const zones = document.getElementById('energyZones');
+    const meta = document.getElementById('energyMeta');
+    if (!svg) return;
+
+    const W = 720, H = 170, TOP = 16, BOT = 26;
+    const amp = Math.min(Math.max(durMin / (8 * 60), 0.55), 1.05);
+    const xAt = h => (Math.min(Math.max(h, 0), 24) / 24) * W;
+    const yAt = e => H - BOT - (e * amp / 100) * (H - TOP - BOT);
+
+    let html = '';
+    // hour grid
+    for (let g = 0; g <= 24; g += 6) {
+      const x = xAt(g);
+      html += '<line x1="' + x + '" y1="' + TOP + '" x2="' + x + '" y2="' + (H - BOT) +
+              '" stroke="rgba(79,216,255,0.07)" stroke-width="1"/>';
+      html += '<text x="' + x + '" y="' + (H - 8) + '" text-anchor="middle" font-size="10" ' +
+              'font-family="ui-monospace,monospace" fill="#5E7686">' +
+              String(g).padStart(2, '0') + '</text>';
+    }
+
+    // hourly curve points from wake to wake+17 (clamped to 24h)
+    const pts = [];
+    for (let h = 0; h <= 17; h += 1) {
+      const t = wake + h;
+      if (t > 24) break;
+      pts.push([xAt(t), yAt(shapeAt(h))]);
+    }
+    if (pts.length > 1) {
+      // Catmull-Rom spline through the points, as cubic beziers
+      let path = 'M' + pts[0][0].toFixed(1) + ',' + pts[0][1].toFixed(1);
+      for (let i = 0; i < pts.length - 1; i++) {
+        const p0 = pts[Math.max(i - 1, 0)], p1 = pts[i],
+              p2 = pts[i + 1], p3 = pts[Math.min(i + 2, pts.length - 1)];
+        const c1x = p1[0] + (p2[0] - p0[0]) / 6, c1y = p1[1] + (p2[1] - p0[1]) / 6;
+        const c2x = p2[0] - (p3[0] - p1[0]) / 6, c2y = p2[1] - (p3[1] - p1[1]) / 6;
+        path += ' C' + c1x.toFixed(1) + ',' + c1y.toFixed(1) + ' ' +
+                c2x.toFixed(1) + ',' + c2y.toFixed(1) + ' ' +
+                p2[0].toFixed(1) + ',' + p2[1].toFixed(1);
+      }
+      const area = path + ' L' + pts[pts.length - 1][0].toFixed(1) + ',' + (H - BOT) +
+                   ' L' + pts[0][0].toFixed(1) + ',' + (H - BOT) + ' Z';
+      html += '<path d="' + area + '" fill="rgba(79,216,255,0.08)"/>';
+      html += '<path d="' + path + '" fill="none" stroke="#4FD8FF" stroke-width="2.5" ' +
+              'stroke-linecap="round" style="filter: drop-shadow(0 0 6px rgba(79,216,255,0.45));"/>';
+    }
+
+    // "you are here" cursor
+    const now = new Date();
+    const nowH = now.getHours() + now.getMinutes() / 60;
+    if (nowH >= wake && nowH <= Math.min(wake + 17, 24)) {
+      const cx = xAt(nowH), cy = yAt(shapeAt(nowH - wake));
+      html += '<line x1="' + cx + '" y1="' + TOP + '" x2="' + cx + '" y2="' + (H - BOT) +
+              '" stroke="rgba(255,255,255,0.18)" stroke-width="1"/>';
+      html += '<circle cx="' + cx + '" cy="' + cy + '" r="5" fill="#9BEBFF" ' +
+              'style="filter: drop-shadow(0 0 8px rgba(155,235,255,0.9));"/>';
+    }
+    svg.innerHTML = html;
+
+    // zone chips
+    const zoneDefs = [
+      ['Peak', wake + 2.5, wake + 5.5],
+      ['Dip', wake + 6.5, wake + 9],
+      ['Peak II', wake + 9.5, wake + 12.5],
+      ['Melatonin', wake + 15, null],
+    ];
+    zones.innerHTML = '';
+    zoneDefs.forEach(z => {
+      if (z[1] > 24) return;
+      const inZone = z[2] ? (nowH >= z[1] && nowH <= z[2]) : nowH >= z[1];
+      const chip = document.createElement('span');
+      chip.className = 'hud-chip' + (inZone ? ' is-full' : '');
+      const b = document.createElement('b');
+      b.textContent = z[2] ? (fmtHourLabel(z[1]) + '–' + fmtHourLabel(z[2])) : fmtHourLabel(z[1]);
+      chip.append(z[0] + ' ', b);
+      zones.appendChild(chip);
+    });
+
+    meta.textContent = simulated
+      ? 'Simulated — awaiting band sync'
+      : 'Last night ' + Math.floor(durMin / 60) + 'h' + String(Math.round(durMin % 60)).padStart(2, '0');
+    meta.classList.toggle('is-online', !simulated);
+  }
+
+  async function loadEnergy() {
+    let wake = null, durMin = null, simulated = true;
+    try {
+      const res = await fetch(ENERGY_SUPABASE_URL +
+        '/rest/v1/zepp_sleep?select=date,sleep_start,sleep_end,awake_min&order=date.desc&limit=1', {
+        headers: { apikey: ENERGY_SUPABASE_KEY, Authorization: 'Bearer ' + ENERGY_SUPABASE_KEY }
+      });
+      const rows = res.ok ? await res.json() : [];
+      if (rows.length) {
+        const r = rows[0];
+        const end = new Date(r.sleep_end);
+        // Only trust a night that ended in the last 36h
+        if (Date.now() - end.getTime() < 36 * 3600 * 1000) {
+          wake = end.getHours() + end.getMinutes() / 60;
+          durMin = (end - new Date(r.sleep_start)) / 60000 - (r.awake_min || 0);
+          simulated = false;
+        }
+      }
+    } catch (e) { /* offline — simulated curve below */ }
+    if (wake == null) { wake = 8; durMin = 8 * 60; }
+    energyState = { wake, durMin, simulated };
+    renderEnergy();
+  }
+  setInterval(renderEnergy, 5 * 60 * 1000);
+
   // ---------- Boot ----------
   rollover();
   processStreak();
@@ -1471,6 +1620,7 @@ body::after {
   setInterval(updateDayRing, 60 * 1000);
   startTicker();
   renderHud();
+  loadEnergy();
 
   // Re-render when storage changes from another tab (or our bridged parent).
   window.addEventListener('storage', () => {

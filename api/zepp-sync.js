@@ -275,12 +275,7 @@ const VERSION = 'zepp-auth-v2-2026-07-05';
 // We don't know the exact sleep eventType, so try a bunch and report which
 // one returns items. Run once with ?probe=1 and read the result.
 async function probeEvents(auth, fromMs, toMs) {
-  const hosts = ['https://api-mifit.zepp.com', 'https://api-mifit-us2.zepp.com', 'https://api-mifit-de2.zepp.com'];
-  const eventTypes = [
-    'sleep', 'sleep_summary', 'all_day_sleep', 'night_sleep', 'restful_sleep',
-    'sleep_detail', 'sleep_stage', 'daily_sleep', 'sleepv2', 'zeppos_sleep',
-    'all_day_stress', 'blood_oxygen' // known-good controls to confirm host/region works
-  ];
+  const host = 'https://api-mifit.zepp.com'; // all regions share the backend
   const headers = {
     apptoken: auth.appToken,
     appname: 'com.huami.midong',
@@ -288,34 +283,51 @@ async function probeEvents(auth, fromMs, toMs) {
     'user-agent': 'Zepp/9.12.5 (Pixel 4; Android 12; Density/2.75)',
     cv: '151689_9.12.5', v: '2.0',
   };
-  const results = [];
-  for (const host of hosts) {
-    for (const et of eventTypes) {
-      const url = host + '/users/' + auth.userId + '/events?' + new URLSearchParams({
-        from: String(fromMs), to: String(toMs), eventType: et, limit: '100', timeZone: 'Europe/Paris',
-      });
-      try {
-        const r = await fetch(url, { headers });
-        let body = null;
-        try { body = await r.json(); } catch (e) { body = null; }
-        const items = body && Array.isArray(body.items) ? body.items : null;
-        const entry = { host: host.replace('https://', ''), eventType: et, status: r.status, items: items ? items.length : null };
-        if (items && items.length) {
-          // include a compact sample of the first item so we can see the shape
-          entry.sampleKeys = Object.keys(items[0]);
-          entry.sample = JSON.stringify(items[0]).slice(0, 400);
-        } else if (!items && body) {
-          entry.bodyKeys = Object.keys(body).slice(0, 8);
-        }
-        results.push(entry);
-      } catch (e) {
-        results.push({ host: host.replace('https://', ''), eventType: et, error: String(e && e.message || e) });
-      }
-    }
+  async function q(params) {
+    const url = host + '/users/' + auth.userId + '/events?' + new URLSearchParams(
+      Object.assign({ from: String(fromMs), to: String(toMs), limit: '200', timeZone: 'Europe/Paris' }, params));
+    const r = await fetch(url, { headers });
+    let body = null;
+    try { body = await r.json(); } catch (e) {}
+    const items = body && Array.isArray(body.items) ? body.items : null;
+    return { status: r.status, items, body };
   }
-  // Keep the response readable: surface hits first.
-  results.sort((a, b) => (b.items || 0) - (a.items || 0));
-  return results;
+
+  const out = {};
+
+  // 1. No eventType filter — hopefully enumerates every event type present.
+  try {
+    const all = await q({});
+    if (all.items) {
+      out.allEvents = { count: all.items.length, types: [...new Set(all.items.map(i => i.eventType))] };
+      const sleepish = all.items.find(i => /sleep|nap|slp/i.test(String(i.eventType)));
+      if (sleepish) out.sleepishSample = JSON.stringify(sleepish).slice(0, 500);
+    } else {
+      out.allEvents = { status: all.status, bodyKeys: all.body ? Object.keys(all.body).slice(0, 10) : null };
+    }
+  } catch (e) { out.allEvents = { error: String(e && e.message || e) }; }
+
+  // 2. Brute-force sleep eventType candidates.
+  const candidates = [
+    'sleep', 'Sleep', 'SLEEP', 'sleep_v2', 'sleepv2', 'sleepV2', 'sleep_summary', 'sleep_report',
+    'sleep_record', 'sleep_records', 'sleep_daily', 'sleepDaily', 'watch_sleep', 'sleep_watch',
+    'nap', 'day_nap', 'sleep_breathing', 'sleep_breath', 'sleep_breathing_quality', 'breath_sleep',
+    'sleep_stage', 'sleep_stages', 'sleep_detail', 'night_sleep', 'restful_sleep', 'all_day_sleep',
+    'daily_sleep', 'zeppos_sleep', 'sleep_score', 'total_sleep',
+  ];
+  out.hits = [];
+  out.empty = [];
+  for (const et of candidates) {
+    try {
+      const r = await q({ eventType: et });
+      if (r.items && r.items.length) {
+        out.hits.push({ eventType: et, count: r.items.length, sampleKeys: Object.keys(r.items[0]), sample: JSON.stringify(r.items[0]).slice(0, 500) });
+      } else {
+        out.empty.push(et + ':' + (r.items ? 0 : 'no-items(' + r.status + ')'));
+      }
+    } catch (e) { out.empty.push(et + ':err'); }
+  }
+  return out;
 }
 
 module.exports = async function handler(req, res) {

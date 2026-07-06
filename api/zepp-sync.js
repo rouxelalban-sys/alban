@@ -295,17 +295,22 @@ async function probeEvents(auth, fromMs, toMs) {
 
   const out = {};
 
-  // 1. No eventType filter — hopefully enumerates every event type present.
+  // 1a. No eventType — capture the FULL error message (may list valid types).
   try {
     const all = await q({});
-    if (all.items) {
-      out.allEvents = { count: all.items.length, types: [...new Set(all.items.map(i => i.eventType))] };
-      const sleepish = all.items.find(i => /sleep|nap|slp/i.test(String(i.eventType)));
-      if (sleepish) out.sleepishSample = JSON.stringify(sleepish).slice(0, 500);
-    } else {
-      out.allEvents = { status: all.status, bodyKeys: all.body ? Object.keys(all.body).slice(0, 10) : null };
-    }
-  } catch (e) { out.allEvents = { error: String(e && e.message || e) }; }
+    out.noFilter = all.items
+      ? { count: all.items.length, types: [...new Set(all.items.map(i => i.eventType))] }
+      : { status: all.status, body: JSON.stringify(all.body).slice(0, 500) };
+  } catch (e) { out.noFilter = { error: String(e && e.message || e) }; }
+
+  // 1b. Deliberately invalid eventType — does the API reject (400 + list) or
+  //     silently return empty? Tells us if "0 items" means valid-but-empty.
+  try {
+    const bad = await q({ eventType: 'zzz_invalid_type_xyz' });
+    out.invalidType = bad.items
+      ? { status: bad.status, items: bad.items.length }
+      : { status: bad.status, body: JSON.stringify(bad.body).slice(0, 500) };
+  } catch (e) { out.invalidType = { error: String(e && e.message || e) }; }
 
   // 2. Brute-force sleep eventType candidates.
   const candidates = [

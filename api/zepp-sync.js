@@ -269,6 +269,55 @@ async function upsert(table, rows) {
 // reveals whether Vercel is serving the current code.
 const VERSION = 'zepp-auth-v2-2026-07-05';
 
+// ---- Probe: discover which /events eventType holds Zepp OS sleep ----
+// Newer Zepp OS bands (Helio Strap) don't populate the legacy band_data
+// sleep; their health data lives under /users/{id}/events as typed events.
+// We don't know the exact sleep eventType, so try a bunch and report which
+// one returns items. Run once with ?probe=1 and read the result.
+async function probeEvents(auth, fromMs, toMs) {
+  const hosts = ['https://api-mifit.zepp.com', 'https://api-mifit-us2.zepp.com', 'https://api-mifit-de2.zepp.com'];
+  const eventTypes = [
+    'sleep', 'sleep_summary', 'all_day_sleep', 'night_sleep', 'restful_sleep',
+    'sleep_detail', 'sleep_stage', 'daily_sleep', 'sleepv2', 'zeppos_sleep',
+    'all_day_stress', 'blood_oxygen' // known-good controls to confirm host/region works
+  ];
+  const headers = {
+    apptoken: auth.appToken,
+    appname: 'com.huami.midong',
+    appplatform: 'android_phone',
+    'user-agent': 'Zepp/9.12.5 (Pixel 4; Android 12; Density/2.75)',
+    cv: '151689_9.12.5', v: '2.0',
+  };
+  const results = [];
+  for (const host of hosts) {
+    for (const et of eventTypes) {
+      const url = host + '/users/' + auth.userId + '/events?' + new URLSearchParams({
+        from: String(fromMs), to: String(toMs), eventType: et, limit: '100', timeZone: 'Europe/Paris',
+      });
+      try {
+        const r = await fetch(url, { headers });
+        let body = null;
+        try { body = await r.json(); } catch (e) { body = null; }
+        const items = body && Array.isArray(body.items) ? body.items : null;
+        const entry = { host: host.replace('https://', ''), eventType: et, status: r.status, items: items ? items.length : null };
+        if (items && items.length) {
+          // include a compact sample of the first item so we can see the shape
+          entry.sampleKeys = Object.keys(items[0]);
+          entry.sample = JSON.stringify(items[0]).slice(0, 400);
+        } else if (!items && body) {
+          entry.bodyKeys = Object.keys(body).slice(0, 8);
+        }
+        results.push(entry);
+      } catch (e) {
+        results.push({ host: host.replace('https://', ''), eventType: et, error: String(e && e.message || e) });
+      }
+    }
+  }
+  // Keep the response readable: surface hits first.
+  results.sort((a, b) => (b.items || 0) - (a.items || 0));
+  return results;
+}
+
 module.exports = async function handler(req, res) {
   // Never let a CDN/browser cache an API response (esp. a stale error).
   res.setHeader('Cache-Control', 'no-store, max-age=0');
@@ -287,6 +336,14 @@ module.exports = async function handler(req, res) {
 
     const access = await getAccessToken(email, password);
     const auth = await loginWithToken(access);
+
+    // Diagnostic: discover the Zepp OS sleep eventType. ?probe=1
+    if (req.query && req.query.probe) {
+      const probe = await probeEvents(auth, from.getTime(), to.getTime());
+      res.status(200).json({ ok: true, version: VERSION, userId: auth.userId, range: [fmtDate(from), fmtDate(to)], probe });
+      return;
+    }
+
     const items = await fetchBandData(auth, fmtDate(from), fmtDate(to));
 
     const parsed = items.map(parseDay);

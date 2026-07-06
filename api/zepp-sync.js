@@ -332,6 +332,26 @@ async function probeEvents(auth, fromMs, toMs) {
       }
     } catch (e) { out.empty.push(et + ':err'); }
   }
+
+  // 3. Alternative ENDPOINTS (not eventTypes). Capture status + body snippet.
+  const fromDate = fmtDate(new Date(fromMs)), toDate = fmtDate(new Date(toMs));
+  const uid = auth.userId;
+  const endpoints = {
+    dataItems:        host + '/users/' + uid + '/dataItems?from=' + fromMs + '&to=' + toMs + '&limit=50&timeZone=Europe/Paris',
+    dataItems_sleep:  host + '/users/' + uid + '/dataItems?dataType=sleep&from=' + fromMs + '&to=' + toMs + '&limit=50',
+    users_sleep:      host + '/users/' + uid + '/sleep?from=' + fromMs + '&to=' + toMs,
+    band_watch:       host + '/v1/data/band_data.json?query_type=summary&device_type=watch&userid=' + uid + '&from_date=' + fromDate + '&to_date=' + toDate,
+    band_nodev:       host + '/v1/data/band_data.json?query_type=summary&userid=' + uid + '&from_date=' + fromDate + '&to_date=' + toDate,
+    sport_history:    host + '/v1/sport/run/history.json?source=run.zepp.com&userid=' + uid,
+  };
+  out.endpoints = {};
+  for (const name of Object.keys(endpoints)) {
+    try {
+      const r = await fetch(endpoints[name], { headers });
+      const txt = await r.text();
+      out.endpoints[name] = { status: r.status, body: txt.slice(0, 350) };
+    } catch (e) { out.endpoints[name] = { error: String(e && e.message || e) }; }
+  }
   return out;
 }
 

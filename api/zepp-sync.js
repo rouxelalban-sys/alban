@@ -189,7 +189,9 @@ function parseDay(item) {
   const stp = summary.stp || null;
 
   let sleep = null;
-  if (slp && slp.st && slp.ed) {
+  // Only a genuine night: end must be strictly after start (nights the
+  // band wasn't worn come back with st === ed and everything zeroed).
+  if (slp && slp.st && slp.ed && slp.ed > slp.st) {
     // stage modes (Gadgetbridge mapping): 4 light, 5 deep, 7 awake, 8 REM
     let rem = 0, awake = 0;
     (slp.stage || []).forEach(s => {

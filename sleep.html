@@ -163,11 +163,7 @@ svg.chart { width: 100%; height: auto; display: block; margin-top: 10px; }
   <div class="dash-eyebrow">Alban · Sleep Bay · Helio Strap</div>
   <h1 class="dash-title">SLEEP</h1>
 
-  <div id="emptyState" class="hud-card empty-hud" style="display:none;">
-    <b>AWAITING FIRST SYNC</b><br>
-    No nights in the databank yet.<br>
-    Deploy, set ZEPP_EMAIL / ZEPP_PASSWORD in Vercel, then open <b>/api/zepp-sync?days=30</b>.
-  </div>
+  <div id="emptyState" class="hud-card empty-hud" style="display:none;"></div>
 
   <div id="content" class="grid" style="display:none;">
 
@@ -400,7 +396,18 @@ svg.chart { width: 100%; height: auto; display: block; margin-top: 10px; }
     var tracked = rows.filter(isTracked);
 
     if (!tracked.length) {
-      document.getElementById('emptyState').style.display = 'block';
+      var e = document.getElementById('emptyState');
+      if (rows.length) {
+        e.innerHTML = '<b>PAS DE NUIT SUIVIE</b><br>' +
+          rows.length + ' jour(s) trouvé(s) dans la base, mais aucun avec ≥ 3h de sommeil détecté — ' +
+          'le bracelet n\'était pas porté ces nuits-là.<br>' +
+          'Porte ton Helio Strap, ouvre l\'app Zepp sur ton téléphone (pour qu\'elle envoie la nuit au cloud), ' +
+          'puis relance <b>/api/zepp-sync?days=2&fresh=1</b>.';
+      } else {
+        e.innerHTML = '<b>AWAITING FIRST SYNC</b><br>Aucune donnée dans la base.<br>' +
+          'Vérifie ZEPP_EMAIL / ZEPP_PASSWORD dans Vercel, puis ouvre <b>/api/zepp-sync?days=30</b>.';
+      }
+      e.style.display = 'block';
       return;
     }
     document.getElementById('content').style.display = 'grid';

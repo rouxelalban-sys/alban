@@ -151,11 +151,11 @@ async function fetchBandData(auth, fromDate, toDate) {
     cv: '151689_9.12.5',
     v: '2.0',
   };
-  let lastErr = null;
+  let lastErr = null, fallback = null;
   for (const host of hosts) {
     try {
       const url = host + '/v1/data/band_data.json?' + new URLSearchParams({
-        query_type: 'summary',
+        query_type: 'detail',           // 'detail' returns real sleep/HR; 'summary' is empty on Zepp OS bands
         device_type: 'android_phone',
         userid: auth.userId,
         from_date: fromDate,
@@ -164,8 +164,14 @@ async function fetchBandData(auth, fromDate, toDate) {
       const res = await fetch(url, { headers: dataHeaders });
       if (res.ok) {
         const body = await res.json();
-        if (body && Array.isArray(body.data)) return body.data;
-        lastErr = new Error('Unexpected band_data body from ' + host + ': ' + JSON.stringify(body).slice(0, 200));
+        if (body && Array.isArray(body.data)) {
+          // A host can answer 200 with only empty shells; prefer one that
+          // actually carries sleep/step data, else keep it as a fallback.
+          if (hasRealData(body.data)) return body.data;
+          if (!fallback) fallback = body.data;
+        } else {
+          lastErr = new Error('Unexpected band_data body from ' + host + ': ' + JSON.stringify(body).slice(0, 200));
+        }
       } else {
         lastErr = new Error('band_data ' + res.status + ' on ' + host);
       }
@@ -173,7 +179,20 @@ async function fetchBandData(auth, fromDate, toDate) {
       lastErr = e;
     }
   }
-  throw lastErr;
+  if (fallback) return fallback;
+  throw lastErr || new Error('No band_data host returned data');
+}
+
+// True if any day carries a real night or step count (not an empty shell).
+function hasRealData(days) {
+  for (const item of days) {
+    try {
+      const s = JSON.parse(Buffer.from(item.summary, 'base64').toString('utf8'));
+      if (s.slp && s.slp.ed > s.slp.st) return true;
+      if (s.stp && (s.stp.ttl || 0) > 0) return true;
+    } catch (e) { /* ignore */ }
+  }
+  return false;
 }
 
 // ---- Parse one day's base64 summary into our table rows ----

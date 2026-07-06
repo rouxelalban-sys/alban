@@ -199,6 +199,10 @@ body.topbar-modal-open {
     <span class="topbar-pill-dot"></span>
     <span class="topbar-pill-label">FOOD</span>
   </a>
+  <a href="climb.html" class="topbar-pill" id="topbarClimb">
+    <span class="topbar-pill-dot"></span>
+    <span class="topbar-pill-label">ESCALADE</span>
+  </a>
   <a href="gym.html" class="topbar-pill" id="topbarGym">
     <span class="topbar-pill-dot"></span>
     <span class="topbar-pill-label">GYM</span>

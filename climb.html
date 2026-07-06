@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#020610">
+<title>JARVIS — Escalade</title>
+<link rel="manifest" href="manifest.json">
+<link rel="stylesheet" href="jarvis.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="topbar.js" defer></script>
+<style>
+:root {
+  --bg: #020610;
+  --text-primary: #EAF6FB;
+  --text-secondary: #9FB6C4;
+  --text-tertiary: #5E7686;
+  --hud: #4FD8FF;
+  --hud-bright: #9BEBFF;
+  --hud-dim: rgba(79, 216, 255, 0.14);
+  --hud-glow: rgba(79, 216, 255, 0.45);
+  --cold: #3A4A66;
+  --danger: #FF5C4D;
+  --warning: #F2C063;
+  --flash: #46D6A2;
+  --font: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text-secondary); font-family: var(--font); -webkit-font-smoothing: antialiased; }
+body { min-height: 100vh; position: relative; overflow-x: hidden; padding: max(28px, env(safe-area-inset-top)) 20px 60px; }
+body::before {
+  content: ''; position: fixed; inset: 0;
+  background: radial-gradient(circle at 78% 12%, rgba(79,216,255,0.10), transparent 45%), radial-gradient(circle at 15% 85%, rgba(46,124,214,0.09), transparent 50%);
+  filter: blur(40px); pointer-events: none; z-index: -2;
+}
+body::after {
+  content: ''; position: fixed; inset: 0;
+  background-image:
+    radial-gradient(1px 1px at 12% 22%, rgba(255,255,255,0.35), transparent 100%),
+    radial-gradient(1px 1px at 68% 12%, rgba(190,230,255,0.30), transparent 100%),
+    radial-gradient(1.5px 1.5px at 42% 58%, rgba(255,255,255,0.22), transparent 100%),
+    radial-gradient(1px 1px at 86% 74%, rgba(190,230,255,0.28), transparent 100%),
+    radial-gradient(1px 1px at 24% 86%, rgba(255,255,255,0.20), transparent 100%);
+  background-size: 520px 520px, 460px 460px, 610px 610px, 550px 550px, 490px 490px;
+  pointer-events: none; z-index: -1;
+}
+.page { max-width: 1100px; margin: 0 auto; }
+.dash-eyebrow { font-family: var(--font-mono); font-size: 9.5px; font-weight: 800; letter-spacing: 0.24em; text-transform: uppercase; color: var(--text-tertiary); margin-bottom: 4px; }
+.dash-title {
+  margin: 0 0 18px; font-size: 28px; font-weight: 700; letter-spacing: 0.06em;
+  background: linear-gradient(180deg, #FFFFFF 0%, #4FD8FF 140%);
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: transparent;
+  filter: drop-shadow(0 0 14px rgba(79,216,255,0.30));
+}
+@media (max-width: 480px) { .dash-title { font-size: 22px; } }
+.section-title { font-size: 10.5px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: var(--text-tertiary); display: flex; align-items: center; gap: 12px; margin: 26px 0 12px; }
+.section-title::before { content: ''; width: 18px; height: 1px; background: var(--text-tertiary); opacity: 0.6; }
+.section-title::after { content: ''; flex: 1; height: 1px; background: linear-gradient(90deg, rgba(255,255,255,0.08), transparent); }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.grid2 .span2 { grid-column: 1 / -1; }
+@media (max-width: 720px) { .grid2 { grid-template-columns: 1fr; } }
+
+/* log form */
+.form-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+.seg { display: inline-flex; border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; overflow: hidden; }
+.seg button { border: 0; background: transparent; color: var(--text-secondary); font-family: var(--font-mono); font-size: 12px; padding: 9px 14px; cursor: pointer; }
+.seg button.on { background: var(--hud-dim); color: var(--hud-bright); }
+.inp, select.inp {
+  padding: 10px 12px; border: 1px solid rgba(255,255,255,0.1); border-radius: 10px;
+  background: rgba(0,0,0,0.3); color: var(--text-primary); font-family: inherit; font-size: 14px; outline: none;
+}
+.inp:focus { border-color: rgba(79,216,255,0.45); box-shadow: 0 0 12px rgba(79,216,255,0.12); }
+select.inp { font-family: var(--font-mono); }
+.cta {
+  padding: 11px 18px; border: 0; border-radius: 11px; background: linear-gradient(180deg, #BFF0FF 0%, #5FCBEE 100%);
+  color: #04121C; font-family: inherit; font-size: 13.5px; font-weight: 700; cursor: pointer;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.9), 0 8px 22px rgba(0,0,0,0.25); transition: transform 0.1s, filter 0.15s;
+}
+.cta:hover { filter: brightness(1.06); transform: translateY(-1px); }
+.ghost { padding: 10px 14px; border: 1px solid rgba(255,255,255,0.12); border-radius: 11px; background: rgba(255,255,255,0.04); color: var(--text-primary); font-family: inherit; font-size: 13px; cursor: pointer; }
+.ghost:hover { background: rgba(255,255,255,0.08); }
+.status-line { font-family: var(--font-mono); font-size: 11px; color: var(--text-tertiary); min-height: 15px; margin-top: 4px; }
+.status-line.err { color: var(--danger); }
+
+/* pending sends chips */
+.sends-list { display: flex; flex-direction: column; gap: 6px; margin: 6px 0 12px; }
+.send-chip { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 10px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07); }
+.send-grade { font-family: var(--font-mono); font-weight: 800; font-size: 14px; color: var(--hud-bright); width: 44px; }
+.send-style { font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-tertiary); }
+.send-x { margin-left: auto; border: 0; background: transparent; color: var(--text-tertiary); font-size: 16px; cursor: pointer; }
+.send-x:hover { color: var(--danger); }
+.style-badge { font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.06em; text-transform: uppercase; padding: 2px 7px; border-radius: 999px; }
+.style-onsight { background: rgba(70,214,162,0.16); color: #46D6A2; }
+.style-flash { background: rgba(79,216,255,0.16); color: #9BEBFF; }
+.style-redpoint { background: rgba(242,192,99,0.16); color: #F2C063; }
+.style-attempt { background: rgba(255,92,77,0.14); color: #FF8A7E; }
+
+/* pyramid */
+.pyramid { display: flex; flex-direction: column; gap: 5px; margin-top: 6px; }
+.pyr-row { display: flex; align-items: center; gap: 10px; }
+.pyr-grade { font-family: var(--font-mono); font-weight: 700; font-size: 12px; color: var(--text-secondary); width: 40px; text-align: right; }
+.pyr-bar { flex: 1; height: 22px; border-radius: 6px; background: rgba(255,255,255,0.04); overflow: hidden; display: flex; }
+.pyr-seg { height: 100%; }
+.pyr-seg.onsight { background: #46D6A2; }
+.pyr-seg.flash { background: #4FD8FF; }
+.pyr-seg.redpoint { background: #F2C063; }
+.pyr-count { font-family: var(--font-mono); font-size: 11px; color: var(--text-tertiary); width: 26px; }
+
+/* stats */
+.stat-big { font-size: 40px; font-weight: 700; letter-spacing: -0.04em; color: var(--text-primary); line-height: 1; font-variant-numeric: tabular-nums; }
+.stat-sub { font-family: var(--font-mono); font-size: 11px; color: var(--text-tertiary); margin-top: 6px; }
+
+/* projects + sessions */
+.proj-item, .sess-item { padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.05); display: flex; align-items: center; gap: 11px; }
+.proj-grade { font-family: var(--font-mono); font-weight: 800; font-size: 15px; color: var(--warning); width: 44px; }
+.proj-name { font-size: 13.5px; color: var(--text-primary); }
+.proj-meta { margin-left: auto; font-family: var(--font-mono); font-size: 10.5px; color: var(--text-tertiary); }
+.sess-date { font-family: var(--font-mono); font-size: 11px; color: var(--text-secondary); width: 92px; }
+.sess-info { font-size: 13px; color: var(--text-primary); }
+.sess-del { margin-left: auto; border: 0; background: transparent; color: var(--text-tertiary); font-size: 15px; cursor: pointer; }
+.sess-del:hover { color: var(--danger); }
+.muted { font-family: var(--font-mono); font-size: 11px; color: var(--text-tertiary); }
+.legend { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 10px; font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-tertiary); }
+.legend span { display: inline-flex; align-items: center; gap: 5px; }
+.legend i { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
+.toast {
+  position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%) translateY(20px);
+  background: rgba(8,20,30,0.95); border: 1px solid rgba(79,216,255,0.35); color: var(--hud-bright);
+  font-family: var(--font-mono); font-size: 12.5px; padding: 12px 18px; border-radius: 12px;
+  opacity: 0; pointer-events: none; transition: opacity 0.3s, transform 0.3s; z-index: 60; box-shadow: 0 0 30px rgba(79,216,255,0.2);
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="dash-eyebrow">Alban · Vertical Ops · Grades</div>
+  <h1 class="dash-title">ESCALADE</h1>
+
+  <!-- coach mounts here -->
+  <div id="coachMount"></div>
+
+  <!-- ===== Log a session ===== -->
+  <div class="section-title">Nouvelle séance</div>
+  <div class="hud-card" style="padding:18px;">
+    <div class="form-row">
+      <div class="seg" id="kindSeg">
+        <button data-kind="boulder" class="on">Bloc</button>
+        <button data-kind="rope">Voie</button>
+      </div>
+      <input class="inp" id="locInput" placeholder="Lieu (salle, spot…)" style="flex:1;min-width:140px;">
+      <input class="inp" id="durInput" type="number" placeholder="min" style="width:80px;">
+    </div>
+
+    <div class="section-title" style="margin:12px 0 8px;">Croix de la séance</div>
+    <div class="form-row">
+      <select class="inp" id="gradeSel"></select>
+      <div class="seg" id="styleSeg">
+        <button data-style="onsight">À vue</button>
+        <button data-style="flash" class="on">Flash</button>
+        <button data-style="redpoint">Après-travail</button>
+        <button data-style="attempt">Essai</button>
+      </div>
+      <input class="inp" id="attemptsInput" type="number" min="1" value="1" title="essais" style="width:70px;">
+      <input class="inp" id="sendName" placeholder="Nom (optionnel)" style="flex:1;min-width:120px;">
+      <label class="muted" style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" id="projChk" style="accent-color:#F2C063;"> projet</label>
+      <button class="ghost" id="addSend">+ Ajouter la croix</button>
+    </div>
+    <div class="sends-list" id="sendsList"></div>
+
+    <div class="form-row" style="margin-top:6px;">
+      <input class="inp" id="sessNotes" placeholder="Notes de séance (sensations, blessure…)" style="flex:1;min-width:180px;">
+      <button class="cta" id="saveSession">Enregistrer la séance</button>
+    </div>
+    <div class="status-line" id="statusLine"></div>
+  </div>
+
+  <!-- ===== Stats ===== -->
+  <div class="grid2" style="margin-top:14px;">
+    <div class="hud-card hud-wrap">
+      <div class="hud-head"><div class="hud-eyebrow">Pyramide · 90 jours</div><div class="hud-state" id="pyrState">—</div></div>
+      <div class="pyramid" id="pyramid"></div>
+      <div class="legend">
+        <span><i style="background:#46D6A2"></i>À vue</span>
+        <span><i style="background:#4FD8FF"></i>Flash</span>
+        <span><i style="background:#F2C063"></i>Après-travail</span>
+      </div>
+    </div>
+    <div class="hud-card hud-wrap">
+      <div class="hud-head"><div class="hud-eyebrow">Niveau max · 30 j</div></div>
+      <div class="stat-big" id="maxGrade">—</div>
+      <div class="stat-sub" id="maxSub">Enregistre des croix pour voir ta progression</div>
+      <div class="hud-head" style="margin-top:16px;"><div class="hud-eyebrow">Ce mois-ci</div></div>
+      <div class="stat-sub" id="monthSummary">—</div>
+    </div>
+
+    <div class="hud-card hud-wrap">
+      <div class="hud-head"><div class="hud-eyebrow">Projets en cours</div></div>
+      <div id="projects"></div>
+    </div>
+    <div class="hud-card hud-wrap">
+      <div class="hud-head"><div class="hud-eyebrow">Dernières séances</div></div>
+      <div id="sessions"></div>
+    </div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>window.COACH_DOMAIN = 'climb';</script>
+<script src="coach.js" defer></script>
+<script>
+(function () {
+  'use strict';
+  var SUPABASE_URL = 'https://uqvlfypjpgcubpmejqky.supabase.co';
+  var SUPABASE_KEY = 'sb_publishable_akUg3CaJheNW-l9j-WtTvw_klhPg20a';
+  var SB = { apikey: SUPABASE_KEY, Authorization: 'Bearer ' + SUPABASE_KEY, 'Content-Type': 'application/json' };
+
+  // French sport grades
+  var GRADES = [];
+  ['4','5a','5b','5c','6a','6a+','6b','6b+','6c','6c+','7a','7a+','7b','7b+','7c','7c+','8a','8a+','8b'].forEach(function (g) { GRADES.push(g); });
+  function gradeIndex(g) { return GRADES.indexOf(g); }
+
+  function $(id) { return document.getElementById(id); }
+  function toast(m) { var t = $('toast'); t.textContent = m; t.classList.add('show'); clearTimeout(t._t); t._t = setTimeout(function () { t.classList.remove('show'); }, 2500); }
+  function status(m, err) { var s = $('statusLine'); s.textContent = m || ''; s.classList.toggle('err', !!err); if (m) { clearTimeout(status._t); status._t = setTimeout(function () { s.textContent = ''; }, 5000); } }
+  function todayStr() { var d = new Date(); return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); }
+
+  var kind = 'boulder', style = 'flash';
+  var pendingSends = [];
+
+  // grade dropdown
+  var sel = $('gradeSel');
+  GRADES.forEach(function (g) { var o = document.createElement('option'); o.value = g; o.textContent = g; sel.appendChild(o); });
+  sel.value = '6a';
+
+  $('kindSeg').addEventListener('click', function (e) {
+    var b = e.target.closest('button'); if (!b) return;
+    kind = b.dataset.kind;
+    this.querySelectorAll('button').forEach(function (x) { x.classList.remove('on'); }); b.classList.add('on');
+  });
+  $('styleSeg').addEventListener('click', function (e) {
+    var b = e.target.closest('button'); if (!b) return;
+    style = b.dataset.style;
+    this.querySelectorAll('button').forEach(function (x) { x.classList.remove('on'); }); b.classList.add('on');
+  });
+
+  var STYLE_LABEL = { onsight:'À vue', flash:'Flash', redpoint:'Après-travail', attempt:'Essai' };
+
+  $('addSend').addEventListener('click', function () {
+    pendingSends.push({
+      grade: sel.value, style: style,
+      attempts: Math.max(1, +$('attemptsInput').value || 1),
+      is_project: $('projChk').checked, name: $('sendName').value.trim() || null
+    });
+    $('sendName').value = ''; $('attemptsInput').value = '1'; $('projChk').checked = false;
+    renderPending();
+  });
+
+  function renderPending() {
+    var box = $('sendsList'); box.innerHTML = '';
+    pendingSends.forEach(function (s, i) {
+      var row = document.createElement('div'); row.className = 'send-chip';
+      row.innerHTML = '<span class="send-grade">' + s.grade + '</span>' +
+        '<span class="style-badge style-' + s.style + '">' + STYLE_LABEL[s.style] + '</span>' +
+        '<span class="send-style">' + s.attempts + ' essai' + (s.attempts > 1 ? 's' : '') + (s.is_project ? ' · projet' : '') + (s.name ? ' · ' + s.name : '') + '</span>' +
+        '<button class="send-x">×</button>';
+      row.querySelector('.send-x').addEventListener('click', function () { pendingSends.splice(i, 1); renderPending(); });
+      box.appendChild(row);
+    });
+  }
+
+  $('saveSession').addEventListener('click', async function () {
+    if (!pendingSends.length) { status('Ajoute au moins une croix.', true); return; }
+    var btn = this; btn.disabled = true;
+    try {
+      var sessRes = await fetch(SUPABASE_URL + '/rest/v1/climb_sessions', {
+        method: 'POST', headers: Object.assign({ Prefer: 'return=representation' }, SB),
+        body: JSON.stringify({ date: todayStr(), location: $('locInput').value.trim() || null, kind: kind, duration_min: +$('durInput').value || null, notes: $('sessNotes').value.trim() || null })
+      });
+      if (!sessRes.ok) throw new Error(await sessRes.text());
+      var sess = (await sessRes.json())[0];
+      var sends = pendingSends.map(function (s) { return Object.assign({ session_id: sess.id }, s); });
+      var sendRes = await fetch(SUPABASE_URL + '/rest/v1/climb_sends', {
+        method: 'POST', headers: Object.assign({ Prefer: 'return=minimal' }, SB), body: JSON.stringify(sends)
+      });
+      if (!sendRes.ok) throw new Error(await sendRes.text());
+      toast('✓ Séance enregistrée');
+      pendingSends = []; renderPending();
+      $('locInput').value = ''; $('durInput').value = ''; $('sessNotes').value = '';
+      loadAll();
+    } catch (e) { status('Échec : ' + e.message, true); }
+    finally { btn.disabled = false; }
+  });
+
+  // ---- Load + render ----
+  var allSessions = [], allSends = [];
+  async function loadAll() {
+    try {
+      var since = new Date(Date.now() - 90 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+      var r1 = await fetch(SUPABASE_URL + '/rest/v1/climb_sessions?select=*&date=gte.' + since + '&order=date.desc', { headers: SB });
+      allSessions = r1.ok ? await r1.json() : [];
+      var ids = allSessions.map(function (s) { return s.id; });
+      allSends = [];
+      if (ids.length) {
+        var r2 = await fetch(SUPABASE_URL + '/rest/v1/climb_sends?select=*&session_id=in.(' + ids.join(',') + ')', { headers: SB });
+        allSends = r2.ok ? await r2.json() : [];
+      }
+    } catch (e) {}
+    renderPyramid(); renderMax(); renderProjects(); renderSessions();
+    window.__climbLoaded = true;
+  }
+
+  function sessionDate(id) { var s = allSessions.find(function (x) { return x.id === id; }); return s ? s.date : null; }
+
+  function renderPyramid() {
+    // successful sends only (not 'attempt'), grouped by grade + style
+    var sent = allSends.filter(function (s) { return s.style !== 'attempt'; });
+    var byGrade = {};
+    sent.forEach(function (s) {
+      (byGrade[s.grade] = byGrade[s.grade] || { onsight: 0, flash: 0, redpoint: 0 })[s.style]++;
+    });
+    var grades = Object.keys(byGrade).sort(function (a, b) { return gradeIndex(b) - gradeIndex(a); });
+    var box = $('pyramid'); box.innerHTML = '';
+    if (!grades.length) { box.innerHTML = '<div class="muted">Aucune croix sur 90 jours.</div>'; $('pyrState').textContent = ''; return; }
+    var max = Math.max.apply(null, grades.map(function (g) { var c = byGrade[g]; return c.onsight + c.flash + c.redpoint; }));
+    grades.forEach(function (g) {
+      var c = byGrade[g], tot = c.onsight + c.flash + c.redpoint;
+      var row = document.createElement('div'); row.className = 'pyr-row';
+      var barW = tot / max * 100;
+      row.innerHTML = '<div class="pyr-grade">' + g + '</div>' +
+        '<div class="pyr-bar" style="max-width:' + barW + '%">' +
+          seg('onsight', c.onsight, tot) + seg('flash', c.flash, tot) + seg('redpoint', c.redpoint, tot) +
+        '</div><div class="pyr-count">' + tot + '</div>';
+      box.appendChild(row);
+    });
+    $('pyrState').textContent = sent.length + ' croix';
+    $('pyrState').classList.add('is-online');
+  }
+  function seg(cls, n, tot) { return n ? '<div class="pyr-seg ' + cls + '" style="width:' + (n / tot * 100) + '%"></div>' : ''; }
+
+  function renderMax() {
+    var since = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+    var recentIds = allSessions.filter(function (s) { return s.date >= since; }).map(function (s) { return s.id; });
+    var recent = allSends.filter(function (s) { return recentIds.indexOf(s.session_id) !== -1 && s.style !== 'attempt'; });
+    if (!recent.length) { $('maxGrade').textContent = '—'; return; }
+    var maxIdx = Math.max.apply(null, recent.map(function (s) { return gradeIndex(s.grade); }));
+    var maxG = GRADES[maxIdx];
+    var top = recent.find(function (s) { return s.grade === maxG; });
+    $('maxGrade').textContent = maxG;
+    $('maxSub').textContent = 'Meilleure croix : ' + STYLE_LABEL[top.style].toLowerCase() + ' · 30 derniers jours';
+    // month summary
+    var msince = new Date(); msince.setDate(1);
+    var monthIds = allSessions.filter(function (s) { return new Date(s.date) >= msince; });
+    var monthSends = allSends.filter(function (s) { return monthIds.some(function (m) { return m.id === s.session_id; }) && s.style !== 'attempt'; });
+    $('monthSummary').textContent = monthIds.length + ' séance' + (monthIds.length > 1 ? 's' : '') + ' · ' + monthSends.length + ' croix';
+  }
+
+  function renderProjects() {
+    var box = $('projects'); box.innerHTML = '';
+    var projs = allSends.filter(function (s) { return s.is_project && s.style === 'attempt'; });
+    // group by name+grade, sum attempts across sessions
+    var map = {};
+    projs.forEach(function (s) {
+      var key = (s.name || s.grade) + '|' + s.grade;
+      var m = map[key] = map[key] || { grade: s.grade, name: s.name, attempts: 0, last: null };
+      m.attempts += s.attempts || 1;
+      var d = sessionDate(s.session_id);
+      if (!m.last || d > m.last) m.last = d;
+    });
+    // remove any that were later sent
+    var sentKeys = {};
+    allSends.filter(function (s) { return s.style !== 'attempt'; }).forEach(function (s) { sentKeys[(s.name || s.grade) + '|' + s.grade] = true; });
+    var list = Object.keys(map).filter(function (k) { return !sentKeys[k]; }).map(function (k) { return map[k]; });
+    list.sort(function (a, b) { return (b.last || '').localeCompare(a.last || ''); });
+    if (!list.length) { box.innerHTML = '<div class="muted">Aucun projet en cours. Coche « projet » sur un essai non réussi.</div>'; return; }
+    list.slice(0, 6).forEach(function (p) {
+      var row = document.createElement('div'); row.className = 'proj-item';
+      row.innerHTML = '<span class="proj-grade">' + p.grade + '</span>' +
+        '<span class="proj-name">' + (p.name || 'Projet ' + p.grade) + '</span>' +
+        '<span class="proj-meta">' + p.attempts + ' essais · ' + (p.last || '') + '</span>';
+      box.appendChild(row);
+    });
+  }
+
+  function renderSessions() {
+    var box = $('sessions'); box.innerHTML = '';
+    if (!allSessions.length) { box.innerHTML = '<div class="muted">Pas encore de séance enregistrée.</div>'; return; }
+    allSessions.slice(0, 6).forEach(function (s) {
+      var sends = allSends.filter(function (x) { return x.session_id === s.id && x.style !== 'attempt'; });
+      var top = sends.length ? GRADES[Math.max.apply(null, sends.map(function (x) { return gradeIndex(x.grade); }))] : '—';
+      var d = new Date(s.date);
+      var row = document.createElement('div'); row.className = 'sess-item';
+      row.innerHTML = '<span class="sess-date">' + d.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' }) + '</span>' +
+        '<span class="sess-info">' + (s.kind === 'boulder' ? 'Bloc' : 'Voie') + ' · ' + sends.length + ' croix · max ' + top + (s.location ? ' · ' + s.location : '') + '</span>' +
+        '<button class="sess-del">×</button>';
+      row.querySelector('.sess-del').addEventListener('click', async function () {
+        try { await fetch(SUPABASE_URL + '/rest/v1/climb_sessions?id=eq.' + s.id, { method: 'DELETE', headers: SB }); loadAll(); } catch (e) {}
+      });
+      box.appendChild(row);
+    });
+  }
+
+  // context for the AI coach
+  window.coachContext = function () {
+    var since = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+    var recentIds = allSessions.filter(function (s) { return s.date >= since; }).map(function (s) { return s.id; });
+    var recent = allSends.filter(function (s) { return recentIds.indexOf(s.session_id) !== -1; });
+    var sent = recent.filter(function (s) { return s.style !== 'attempt'; });
+    var maxG = sent.length ? GRADES[Math.max.apply(null, sent.map(function (s) { return gradeIndex(s.grade); }))] : '—';
+    var projs = recent.filter(function (s) { return s.is_project; });
+    return 'Sur 30 jours : ' + recentIds.length + ' séances, ' + sent.length + ' croix, niveau max ' + maxG +
+      '. Projets en cours : ' + (projs.length ? projs.map(function (p) { return (p.name || p.grade); }).join(', ') : 'aucun') + '.';
+  };
+
+  loadAll();
+})();
+</script>
+</body>
+</html>

@@ -291,16 +291,14 @@ svg.chart { width: 100%; height: auto; display: block; margin-top: 10px; }
     document.getElementById('nightDur').textContent = fmtHM(asleepMin(row));
     document.getElementById('nightTimes').textContent =
       fmtClock(row.sleep_start) + ' → ' + fmtClock(row.sleep_end);
-    if (row.score != null) {
-      var sp = document.getElementById('nightScore');
-      sp.style.display = '';
-      sp.textContent = row.score + ' /100';
-    }
 
     var hyp = document.getElementById('hypno');
     hyp.innerHTML = '';
     var stage = row.raw && row.raw.slp && Array.isArray(row.raw.slp.stage) ? row.raw.slp.stage : null;
     var MODES = { 4: 'light', 5: 'deep', 7: 'awake', 8: 'rem' };
+    var hasStages = (row.deep_min || 0) + (row.light_min || 0) + (row.rem_min || 0) > 0;
+    var estimated = !(stage && stage.length) && !hasStages; // ODI-derived night
+
     if (stage && stage.length) {
       var total = stage.reduce(function (s, x) { return s + (x.stop - x.start); }, 0) || 1;
       stage.forEach(function (x) {
@@ -309,8 +307,7 @@ svg.chart { width: 100%; height: auto; display: block; margin-top: 10px; }
         seg.style.width = ((x.stop - x.start) / total * 100) + '%';
         hyp.appendChild(seg);
       });
-    } else {
-      // No stage detail — proportional deep/light/rem blocks
+    } else if (hasStages) {
       var parts = [
         ['deep', row.deep_min || 0], ['light', row.light_min || 0],
         ['rem', row.rem_min || 0], ['awake', row.awake_min || 0]
@@ -323,14 +320,39 @@ svg.chart { width: 100%; height: auto; display: block; margin-top: 10px; }
         seg.style.width = (p[1] / sum * 100) + '%';
         hyp.appendChild(seg);
       });
+    } else {
+      // Estimated night (SpO2/ODI) — one plain bar, no stage detail.
+      var seg = document.createElement('div');
+      seg.className = 'hypno-seg light';
+      seg.style.width = '100%'; seg.style.opacity = '0.4';
+      hyp.appendChild(seg);
     }
 
-    var bits = [];
-    if (row.deep_min != null)  bits.push('deep ' + fmtHM(row.deep_min));
-    if (row.light_min != null) bits.push('light ' + fmtHM(row.light_min));
-    if (row.rem_min)           bits.push('REM ' + fmtHM(row.rem_min));
-    if (row.awake_min)         bits.push('awake ' + fmtHM(row.awake_min));
-    document.getElementById('nightBreak').textContent = bits.join(' · ') || '—';
+    var badge = document.getElementById('nightScore');
+    if (estimated) {
+      badge.style.display = '';
+      badge.textContent = '≈ estimé (SpO2)';
+      badge.style.background = 'rgba(242,192,99,0.14)';
+      badge.style.borderColor = 'rgba(242,192,99,0.35)';
+      badge.style.color = 'var(--warning)';
+    } else if (row.score != null) {
+      badge.style.display = '';
+      badge.textContent = row.score + ' /100';
+    } else {
+      badge.style.display = 'none';
+    }
+
+    if (estimated) {
+      document.getElementById('nightBreak').textContent =
+        'Durée estimée depuis l\'oxygène sanguin nocturne — importe le SLEEP.csv pour le détail des phases.';
+    } else {
+      var bits = [];
+      if (row.deep_min != null)  bits.push('profond ' + fmtHM(row.deep_min));
+      if (row.light_min != null) bits.push('léger ' + fmtHM(row.light_min));
+      if (row.rem_min)           bits.push('REM ' + fmtHM(row.rem_min));
+      if (row.awake_min)         bits.push('éveillé ' + fmtHM(row.awake_min));
+      document.getElementById('nightBreak').textContent = bits.join(' · ') || '—';
+    }
   }
 
   function renderWeek(rows) {

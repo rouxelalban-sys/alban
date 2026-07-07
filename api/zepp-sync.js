@@ -245,6 +245,64 @@ function parseDay(item) {
   return { date: item.date_time, sleep, daily };
 }
 
+// ---- Auto sleep (approx) derived from the overnight SpO2/ODI event ----
+// The Helio Strap doesn't expose real sleep via the cloud API, but its
+// blood_oxygen 'odi' event is measured across the night: timestamp ≈ start,
+// 'cost' = duration in seconds. That gives a real (if stage-less, bedtime-
+// approximate) night automatically. The Zepp CSV export later overwrites
+// these with true stages (see getStageDates guard).
+async function fetchOdiSleep(auth, fromMs, toMs) {
+  const url = 'https://api-mifit.zepp.com/users/' + auth.userId + '/events?' + new URLSearchParams({
+    from: String(fromMs), to: String(toMs), eventType: 'blood_oxygen', limit: '200', timeZone: 'Europe/Paris',
+  });
+  const headers = {
+    apptoken: auth.appToken, appname: 'com.huami.midong', appplatform: 'android_phone',
+    'user-agent': 'Zepp/9.12.5 (Pixel 4; Android 12; Density/2.75)', cv: '151689_9.12.5', v: '2.0',
+  };
+  let items = [];
+  try {
+    const r = await fetch(url, { headers });
+    const body = await r.json();
+    if (body && Array.isArray(body.items)) items = body.items;
+  } catch (e) { /* ignore */ }
+
+  const rows = [];
+  for (const it of items) {
+    if (it.subType !== 'odi') continue;
+    const startMs = Number(it.timestamp);
+    const durSec = Number(it.cost);
+    if (!startMs || !durSec) continue;
+    if (durSec < 7200 || durSec > 14 * 3600) continue; // plausible full night only
+    const tz = it.timezone || 'Europe/Paris';
+    const start = new Date(startMs);
+    const end = new Date(startMs + durSec * 1000);
+    let date;
+    try { date = start.toLocaleDateString('en-CA', { timeZone: tz }); }
+    catch (e) { date = start.toISOString().slice(0, 10); }
+    rows.push({
+      date,
+      sleep_start: start.toISOString(),
+      sleep_end: end.toISOString(),
+      deep_min: null, light_min: null, rem_min: null, awake_min: null, score: null,
+    });
+  }
+  return rows;
+}
+
+// Dates that already hold real stage data (from a CSV export) — never let
+// the approximate ODI sync overwrite those.
+async function getStageDates(dates) {
+  if (!dates.length) return new Set();
+  const inList = '(' + dates.map(d => '"' + d + '"').join(',') + ')';
+  try {
+    const res = await fetch(SUPABASE_URL + '/rest/v1/zepp_sleep?select=date&deep_min=gt.0&date=in.' + encodeURIComponent(inList), {
+      headers: { apikey: SUPABASE_KEY, Authorization: 'Bearer ' + SUPABASE_KEY },
+    });
+    const rows = res.ok ? await res.json() : [];
+    return new Set(rows.map(r => r.date));
+  } catch (e) { return new Set(); }
+}
+
 // ---- Supabase REST upsert (no npm dependencies) ----
 async function upsert(table, rows) {
   if (!rows.length) return 0;
@@ -390,6 +448,13 @@ module.exports = async function handler(req, res) {
     await upsert('zepp_sleep', sleepRows);
     await upsert('zepp_daily', dailyRows);
 
+    // Approximate auto-sleep from the overnight SpO2/ODI event, but never
+    // clobber a night that already has real stages from a CSV export.
+    const odiAll = await fetchOdiSleep(auth, from.getTime(), to.getTime());
+    const stageDates = await getStageDates(odiAll.map(r => r.date));
+    const odiRows = odiAll.filter(r => !stageDates.has(r.date));
+    await upsert('zepp_sleep', odiRows);
+
     const out = {
       ok: true,
       version: VERSION,
@@ -397,8 +462,11 @@ module.exports = async function handler(req, res) {
       daysReturned: items.length,
       sleepRows: sleepRows.length,
       dailyRows: dailyRows.length,
+      odiFound: odiAll.length,
+      odiWritten: odiRows.length,
+      odiSkippedHasExport: odiAll.length - odiRows.length,
     };
-    if (debug) out.raw = items;
+    if (debug) { out.raw = items; out.odiRows = odiAll; }
     res.status(200).json(out);
   } catch (e) {
     res.status(500).json({ ok: false, version: VERSION, error: String(e && e.message || e) });

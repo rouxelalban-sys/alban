@@ -28,7 +28,23 @@ function ghHeaders() {
   };
 }
 function repo() { return process.env.VAULT_REPO; }
-function branch() { return process.env.VAULT_BRANCH || 'main'; }
+
+// Resolve the branch: use VAULT_BRANCH if set, else the repo's real
+// default branch (handles main vs master automatically). Also gives a
+// clear error if the repo itself isn't reachable with this token.
+let _branch = null;
+async function getBranch() {
+  if (_branch) return _branch;
+  if (process.env.VAULT_BRANCH) { _branch = process.env.VAULT_BRANCH; return _branch; }
+  const r = await gh('/repos/' + repo());
+  if (r.status === 404) {
+    throw new Error('Repo introuvable ou token sans accès : "' + repo() +
+      '". Vérifie VAULT_REPO (format exact owner/repo, ex rouxelalban-sys/vault) et que ton token fine-grained inclut CE repo avec la permission Contents: Read and write.');
+  }
+  if (r.status !== 200) throw new Error('GitHub /repos ' + r.status + ': ' + JSON.stringify(r.body).slice(0, 150));
+  _branch = (r.body && r.body.default_branch) || 'main';
+  return _branch;
+}
 
 async function gh(path, opts) {
   const res = await fetch('https://api.github.com' + path, Object.assign({ headers: ghHeaders() }, opts || {}));
@@ -38,7 +54,12 @@ async function gh(path, opts) {
 
 // ---- ops ----------------------------------------------------
 async function opList() {
-  const r = await gh('/repos/' + repo() + '/git/trees/' + branch() + '?recursive=1');
+  const b = await getBranch();
+  const r = await gh('/repos/' + repo() + '/git/trees/' + b + '?recursive=1');
+  if (r.status === 404) {
+    throw new Error('Branche "' + b + '" vide ou absente sur ' + repo() +
+      '. Le repo existe mais le push n\'a probablement pas abouti (repo vide), ou la branche s\'appelle autrement. Vérifie sur GitHub que tes notes sont bien là.');
+  }
   if (r.status !== 200) throw new Error('GitHub tree ' + r.status + ': ' + JSON.stringify(r.body).slice(0, 200));
   const notes = (r.body.tree || [])
     .filter(x => x.type === 'blob' && /\.md$/i.test(x.path) && !x.path.startsWith('.'))
@@ -48,7 +69,7 @@ async function opList() {
 }
 
 async function opRead(path) {
-  const r = await gh('/repos/' + repo() + '/contents/' + encodeURI(path) + '?ref=' + branch());
+  const r = await gh('/repos/' + repo() + '/contents/' + encodeURI(path) + '?ref=' + (await getBranch()));
   if (r.status !== 200) throw new Error('GitHub read ' + r.status);
   const content = Buffer.from(r.body.content || '', 'base64').toString('utf8');
   return { path, content };
@@ -65,9 +86,10 @@ async function opSearch(q) {
 }
 
 async function writeNote(path, content, message, allowOverwrite) {
+  const b = await getBranch();
   // Need the sha when the file already exists.
   let sha;
-  const existing = await gh('/repos/' + repo() + '/contents/' + encodeURI(path) + '?ref=' + branch());
+  const existing = await gh('/repos/' + repo() + '/contents/' + encodeURI(path) + '?ref=' + b);
   if (existing.status === 200) {
     if (!allowOverwrite) return { skipped: true, reason: 'exists' };
     sha = existing.body.sha;
@@ -77,7 +99,7 @@ async function writeNote(path, content, message, allowOverwrite) {
     body: JSON.stringify({
       message: message || ('JARVIS: ' + path),
       content: Buffer.from(content, 'utf8').toString('base64'),
-      branch: branch(),
+      branch: b,
       sha,
     }),
   });

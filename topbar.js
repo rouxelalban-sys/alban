@@ -211,6 +211,10 @@ body.topbar-modal-open {
     <span class="topbar-pill-dot"></span>
     <span class="topbar-pill-label">MENTOR</span>
   </a>
+  <a href="brain.html" class="topbar-pill" id="topbarBrain">
+    <span class="topbar-pill-dot"></span>
+    <span class="topbar-pill-label">BRAIN</span>
+  </a>
   <a href="finance.html" class="topbar-pill" id="topbarFinance">
     <span class="topbar-pill-dot"></span>
     <span class="topbar-pill-label">FINANCE</span>

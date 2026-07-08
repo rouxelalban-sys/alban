@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#020610">
+<title>JARVIS — Brain</title>
+<link rel="manifest" href="manifest.json">
+<link rel="stylesheet" href="jarvis.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="topbar.js" defer></script>
+<style>
+:root {
+  --bg: #020610;
+  --text-primary: #EAF6FB;
+  --text-secondary: #9FB6C4;
+  --text-tertiary: #5E7686;
+  --hud: #4FD8FF;
+  --hud-bright: #9BEBFF;
+  --hud-dim: rgba(79, 216, 255, 0.14);
+  --hud-glow: rgba(79, 216, 255, 0.45);
+  --cold: #3A4A66;
+  --danger: #FF5C4D;
+  --warning: #F2C063;
+  --font: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text-secondary); font-family: var(--font); -webkit-font-smoothing: antialiased; }
+body { min-height: 100vh; position: relative; overflow-x: hidden; padding: max(28px, env(safe-area-inset-top)) 20px 60px; }
+body::before {
+  content: ''; position: fixed; inset: 0;
+  background: radial-gradient(circle at 78% 12%, rgba(79,216,255,0.10), transparent 45%), radial-gradient(circle at 15% 85%, rgba(46,124,214,0.09), transparent 50%);
+  filter: blur(40px); pointer-events: none; z-index: -2;
+}
+body::after {
+  content: ''; position: fixed; inset: 0;
+  background-image:
+    radial-gradient(1px 1px at 12% 22%, rgba(255,255,255,0.35), transparent 100%),
+    radial-gradient(1px 1px at 68% 12%, rgba(190,230,255,0.30), transparent 100%),
+    radial-gradient(1.5px 1.5px at 42% 58%, rgba(255,255,255,0.22), transparent 100%),
+    radial-gradient(1px 1px at 86% 74%, rgba(190,230,255,0.28), transparent 100%),
+    radial-gradient(1px 1px at 24% 86%, rgba(255,255,255,0.20), transparent 100%);
+  background-size: 520px 520px, 460px 460px, 610px 610px, 550px 550px, 490px 490px;
+  pointer-events: none; z-index: -1;
+}
+.page { max-width: 1100px; margin: 0 auto; }
+.dash-eyebrow { font-family: var(--font-mono); font-size: 9.5px; font-weight: 800; letter-spacing: 0.24em; text-transform: uppercase; color: var(--text-tertiary); margin-bottom: 4px; }
+.dash-title {
+  margin: 0 0 18px; font-size: 28px; font-weight: 700; letter-spacing: 0.06em;
+  background: linear-gradient(180deg, #FFFFFF 0%, #4FD8FF 140%);
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: transparent;
+  filter: drop-shadow(0 0 14px rgba(79,216,255,0.30));
+}
+@media (max-width: 480px) { .dash-title { font-size: 22px; } }
+
+/* Capture */
+.cap-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.cap-input {
+  flex: 1; min-width: 200px; padding: 12px 14px; border: 1px solid rgba(255,255,255,0.1); border-radius: 12px;
+  background: rgba(0,0,0,0.3); color: var(--text-primary); font-family: inherit; font-size: 14px; outline: none;
+}
+.cap-input:focus { border-color: rgba(79,216,255,0.45); box-shadow: 0 0 12px rgba(79,216,255,0.12); }
+textarea.cap-input { width: 100%; min-height: 76px; resize: vertical; margin-top: 8px; }
+.cta {
+  padding: 12px 18px; border: 0; border-radius: 12px; background: linear-gradient(180deg, #BFF0FF 0%, #5FCBEE 100%);
+  color: #04121C; font-family: inherit; font-size: 13.5px; font-weight: 700; cursor: pointer;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.9), 0 8px 22px rgba(0,0,0,0.25); transition: transform 0.1s, filter 0.15s;
+}
+.cta:hover { filter: brightness(1.06); transform: translateY(-1px); }
+.cta:disabled { opacity: 0.5; cursor: wait; }
+.status-line { font-family: var(--font-mono); font-size: 11px; color: var(--text-tertiary); min-height: 15px; margin-top: 8px; }
+.status-line.ok { color: var(--hud-bright); }
+.status-line.err { color: var(--danger); }
+
+/* Browser */
+.grid { display: grid; grid-template-columns: 300px 1fr; gap: 14px; margin-top: 14px; }
+@media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+.notes-panel { max-height: 560px; overflow-y: auto; }
+.note-item { padding: 8px 10px; border-radius: 8px; cursor: pointer; font-size: 13px; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.note-item:hover { background: rgba(79,216,255,0.07); }
+.note-item.on { background: var(--hud-dim); color: var(--hud-bright); }
+.folder-label { font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-tertiary); margin: 12px 0 4px; }
+.viewer { min-height: 300px; }
+.viewer-title { font-size: 17px; font-weight: 700; color: var(--text-primary); margin-bottom: 12px; }
+.md { font-size: 14px; line-height: 1.7; color: var(--text-primary); overflow-wrap: break-word; }
+.md h1, .md h2, .md h3 { color: var(--hud-bright); margin: 18px 0 8px; line-height: 1.3; }
+.md h1 { font-size: 20px; } .md h2 { font-size: 17px; } .md h3 { font-size: 15px; }
+.md code { font-family: var(--font-mono); font-size: 12.5px; background: rgba(79,216,255,0.08); padding: 1px 6px; border-radius: 5px; }
+.md pre { background: rgba(0,0,0,0.4); border: 1px solid rgba(79,216,255,0.12); border-radius: 10px; padding: 12px; overflow-x: auto; }
+.md pre code { background: transparent; padding: 0; }
+.md a { color: var(--hud); text-decoration: none; }
+.md a:hover { text-decoration: underline; }
+.md .wikilink { color: var(--warning); cursor: pointer; }
+.md ul { padding-left: 22px; margin: 6px 0; }
+.md blockquote { border-left: 3px solid rgba(79,216,255,0.4); margin: 8px 0; padding: 2px 14px; color: var(--text-secondary); }
+.md hr { border: 0; border-top: 1px solid rgba(255,255,255,0.08); margin: 14px 0; }
+.muted { font-family: var(--font-mono); font-size: 11px; color: var(--text-tertiary); }
+.empty-hud { text-align: center; padding: 36px 20px; font-family: var(--font-mono); color: var(--text-tertiary); font-size: 12px; letter-spacing: 0.04em; line-height: 2.1; }
+.empty-hud b { color: var(--hud); }
+.obs-link { display: inline-block; margin-top: 10px; font-family: var(--font-mono); font-size: 11px; color: var(--warning); text-decoration: none; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="dash-eyebrow">Alban · Second Brain · Obsidian</div>
+  <h1 class="dash-title">BRAIN</h1>
+
+  <!-- Setup card (shown until the vault bridge answers) -->
+  <div id="setupCard" class="hud-card empty-hud" style="display:none;">
+    <b>VAULT NON CONNECTÉ</b><br>
+    1. Dans Obsidian : installe le plugin communautaire <b>Git</b> et pousse ton vault vers un repo GitHub <b>privé</b>.<br>
+    2. GitHub → Settings → Developer settings → <b>Fine-grained token</b> (accès Contents lecture/écriture sur ce repo).<br>
+    3. Vercel → Environment Variables : <b>GITHUB_TOKEN</b> + <b>VAULT_REPO</b> (ex : alban/vault) → Redeploy.<br>
+    <span class="muted" id="setupDetail"></span>
+  </div>
+
+  <div id="content" style="display:none;">
+
+    <!-- Quick capture -->
+    <div class="hud-card hud-wrap">
+      <div class="hud-head">
+        <div class="hud-eyebrow">Capture rapide → Inbox</div>
+        <div class="hud-state" id="vaultStats">—</div>
+      </div>
+      <div class="cap-row">
+        <input class="cap-input" id="capTitle" placeholder="Titre (optionnel)">
+      </div>
+      <textarea class="cap-input" id="capBody" placeholder="Une idée, une pensée, un lien… elle apparaîtra dans Obsidian à la prochaine sync."></textarea>
+      <div class="cap-row" style="margin-top:10px;">
+        <button class="cta" id="capSave">✦ Capturer dans le vault</button>
+      </div>
+      <div class="status-line" id="capStatus"></div>
+    </div>
+
+    <!-- Browser -->
+    <div class="grid">
+      <div class="hud-card hud-wrap notes-panel">
+        <input class="cap-input" id="searchInput" placeholder="Rechercher…" style="width:100%; margin-bottom:8px;">
+        <div id="notesList"><div class="muted">Chargement du vault…</div></div>
+      </div>
+      <div class="hud-card hud-wrap viewer">
+        <div class="viewer-title" id="viewerTitle">Sélectionne une note</div>
+        <div class="md" id="viewerBody"><span class="muted">Le contenu s'affichera ici. Les [[wikilinks]] sont cliquables.</span></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  function $(id) { return document.getElementById(id); }
+  var allNotes = [];
+  var currentPath = null;
+
+  // ---- tiny markdown renderer (safe: escapes first) ----
+  function esc(s) { return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+  function renderMd(src) {
+    var s = esc(src);
+    // fenced code
+    s = s.replace(/```([\s\S]*?)```/g, function (_, code) { return '<pre><code>' + code.trim() + '</code></pre>'; });
+    // headings
+    s = s.replace(/^### (.*)$/gm, '<h3>$1</h3>')
+         .replace(/^## (.*)$/gm, '<h2>$1</h2>')
+         .replace(/^# (.*)$/gm, '<h1>$1</h1>');
+    // hr, blockquote
+    s = s.replace(/^---+$/gm, '<hr>')
+         .replace(/^&gt; (.*)$/gm, '<blockquote>$1</blockquote>');
+    // task boxes + lists
+    s = s.replace(/^\s*- \[x\] (.*)$/gm, '<li>☑ $1</li>')
+         .replace(/^\s*- \[ \] (.*)$/gm, '<li>☐ $1</li>')
+         .replace(/^\s*[-*] (.*)$/gm, '<li>$1</li>');
+    s = s.replace(/(<li>[\s\S]*?<\/li>)(?!\s*<li>)/g, '<ul>$1</ul>');
+    // inline
+    s = s.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
+         .replace(/\*([^*\n]+)\*/g, '<i>$1</i>')
+         .replace(/`([^`\n]+)`/g, '<code>$1</code>');
+    // wikilinks + md links
+    s = s.replace(/\[\[([^\]|]+)(\|([^\]]+))?\]\]/g, function (_, target, __, alias) {
+      return '<span class="wikilink" data-target="' + target.trim() + '">' + (alias || target).trim() + '</span>';
+    });
+    s = s.replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+    // paragraphs
+    s = s.split(/\n{2,}/).map(function (block) {
+      if (/^\s*<(h\d|ul|pre|blockquote|hr)/.test(block)) return block;
+      return '<p>' + block.replace(/\n/g, '<br>') + '</p>';
+    }).join('\n');
+    return s;
+  }
+
+  // ---- API ----
+  async function api(query, opts) {
+    var res = await fetch('/api/obsidian' + query, opts);
+    var data = await res.json().catch(function () { return {}; });
+    if (!res.ok || !data.ok) { var e = new Error(data.error || ('HTTP ' + res.status)); e.setup = data.setup; throw e; }
+    return data;
+  }
+
+  function showSetup(detail) {
+    $('setupCard').style.display = 'block';
+    $('content').style.display = 'none';
+    $('setupDetail').textContent = detail || '';
+  }
+
+  // ---- notes list ----
+  function renderList(notes) {
+    var box = $('notesList'); box.innerHTML = '';
+    if (!notes.length) { box.innerHTML = '<div class="muted">Aucune note.</div>'; return; }
+    var byFolder = {};
+    notes.forEach(function (n) {
+      var f = n.path.includes('/') ? n.path.split('/')[0] : '(racine)';
+      (byFolder[f] = byFolder[f] || []).push(n);
+    });
+    Object.keys(byFolder).sort().forEach(function (f) {
+      var lb = document.createElement('div'); lb.className = 'folder-label'; lb.textContent = f + ' · ' + byFolder[f].length;
+      box.appendChild(lb);
+      byFolder[f].slice(0, 100).forEach(function (n) {
+        var d = document.createElement('div'); d.className = 'note-item' + (n.path === currentPath ? ' on' : '');
+        d.textContent = n.path.split('/').pop().replace(/\.md$/i, '');
+        d.title = n.path;
+        d.addEventListener('click', function () { openNote(n.path); });
+        box.appendChild(d);
+      });
+    });
+  }
+
+  async function loadVault() {
+    try {
+      var data = await api('?op=list');
+      allNotes = data.notes;
+      $('setupCard').style.display = 'none';
+      $('content').style.display = 'block';
+      $('vaultStats').textContent = data.count + ' notes';
+      $('vaultStats').classList.add('is-online');
+      renderList(allNotes);
+    } catch (e) {
+      showSetup(e.message);
+    }
+  }
+
+  async function openNote(path) {
+    currentPath = path;
+    renderList(filtered());
+    $('viewerTitle').textContent = path.split('/').pop().replace(/\.md$/i, '');
+    $('viewerBody').innerHTML = '<span class="muted">Chargement…</span>';
+    try {
+      var data = await api('?op=read&path=' + encodeURIComponent(path));
+      $('viewerBody').innerHTML = renderMd(data.content);
+      $('viewerBody').querySelectorAll('.wikilink').forEach(function (w) {
+        w.addEventListener('click', function () {
+          var target = w.dataset.target.toLowerCase();
+          var hit = allNotes.find(function (n) {
+            return n.path.toLowerCase().endsWith('/' + target + '.md') || n.path.toLowerCase() === target + '.md';
+          });
+          if (hit) openNote(hit.path);
+        });
+      });
+    } catch (e) {
+      $('viewerBody').innerHTML = '<span class="muted">Erreur : ' + esc(e.message) + '</span>';
+    }
+  }
+
+  // ---- search (filename filter + full-text) ----
+  function filtered() {
+    var q = $('searchInput').value.trim().toLowerCase();
+    if (!q) return allNotes;
+    return allNotes.filter(function (n) { return n.path.toLowerCase().includes(q); });
+  }
+  var searchTimer = null;
+  $('searchInput').addEventListener('input', function () {
+    renderList(filtered());
+    var q = this.value.trim();
+    clearTimeout(searchTimer);
+    if (q.length >= 3) {
+      searchTimer = setTimeout(async function () {
+        try {
+          var data = await api('?op=search&q=' + encodeURIComponent(q));
+          if (!data.results.length) return;
+          var extra = data.results
+            .map(function (r) { return allNotes.find(function (n) { return n.path === r.path; }); })
+            .filter(Boolean);
+          var merged = [...new Set(filtered().concat(extra))];
+          renderList(merged);
+        } catch (e) { /* filename filter already shown */ }
+      }, 500);
+    }
+  });
+
+  // ---- capture ----
+  $('capSave').addEventListener('click', async function () {
+    var body = $('capBody').value.trim();
+    if (!body) return;
+    var btn = this; btn.disabled = true;
+    var st = $('capStatus'); st.className = 'status-line'; st.textContent = 'Commit vers le vault…';
+    try {
+      var data = await api('', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ op: 'create', folder: 'Inbox', title: $('capTitle').value.trim(), content: body + '\n' })
+      });
+      st.className = 'status-line ok'; st.textContent = '✓ Capturé → ' + data.path + ' (visible dans Obsidian à la prochaine sync)';
+      $('capTitle').value = ''; $('capBody').value = '';
+      loadVault();
+    } catch (e) {
+      st.className = 'status-line err'; st.textContent = 'Échec : ' + e.message;
+    } finally { btn.disabled = false; }
+  });
+
+  loadVault();
+})();
+</script>
+</body>
+</html>

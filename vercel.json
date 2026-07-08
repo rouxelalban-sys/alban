@@ -1,5 +1,6 @@
 {
   "crons": [
-    { "path": "/api/zepp-sync", "schedule": "30 9 * * *" }
+    { "path": "/api/zepp-sync", "schedule": "30 9 * * *" },
+    { "path": "/api/obsidian?op=daily", "schedule": "0 20 * * *" }
   ]
 }
